@@ -7,34 +7,37 @@ import { ConnectionForm } from './components/ConnectionForm';
 function App() {
   const [activeTab, setActiveTab] = useState(0);
   const [formData, setFormData] = useState({
-    server: '',
-    database: '',
-    user: '',
-    password: '',
+    server: '45.124.84.145',
+    database: 'master',
+    user: 'sa',
+    password: 'MatKhauCuaBan@123',
     port: '1433'
   });
 
-  const handleConnect = () => {
-    console.log("Dữ liệu gửi sang Electron Main:", formData);
-    // Gửi sang Electron Main Process qua IPC
-    if (window.electronAPI) {
-      window.electronAPI.testConnection(formData);
+const handleCloudUpload = async () => {
+  try {
+    // Bước 1: Gọi lệnh tạo backup trên Ubuntu và đợi nó kéo về Windows
+    // formData lấy từ các ô nhập liệu (IP, User, Pass sa, DB Name)
+    const backupResult = await window.electronAPI.createSqlBackup(formData);
+
+    if (backupResult.success) {
+      console.log("File đã về máy local tại:", backupResult.filePath);
+
+      // Bước 2: Lấy đường dẫn file vừa tải về để đẩy lên Google Drive
+      const driveResult = await window.electronAPI.uploadToDrive(backupResult.filePath);
+
+      if (driveResult.success) {
+        alert('Thành công! File đã lên Google Drive. ID: ' + driveResult.fileId);
+      } else {
+        alert('Lỗi khi upload Drive: ' + driveResult.error);
+      }
     } else {
-      alert("Chạy trong trình duyệt - Dữ liệu: " + JSON.stringify(formData));
+      alert('Lỗi khi tạo backup từ Server: ' + backupResult.error);
     }
-  };
-
-  const handleCloudUpload = async () => {
-  // Ở đây tôi giả định bạn đã có một file .sql được tạo ra trước đó
-  const testFilePath = 'C:/hls_output/test.sql';
-  
-  const result = await window.electronAPI.uploadToDrive(testFilePath);
-
-  if (result.success) {
-    alert('Đã đẩy file lên Google Drive thành công! ID: ' + result.fileId);
-  } else {
-    alert('Thất bại: ' + result.error);
+  } catch (err) {
+    alert('Lỗi hệ thống: ' + err.message);
   }
+  console.log("formdata:" ,formData);
 };
 
   return (

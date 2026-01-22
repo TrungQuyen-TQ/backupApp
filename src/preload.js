@@ -1,8 +1,14 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer } = require("electron");
 
-contextBridge.exposeInMainWorld('electronAPI', {
+contextBridge.exposeInMainWorld("electronAPI", {
   // Hàm upload đã viết ở các bước trước
-  uploadToDrive: (filePath) => ipcRenderer.invoke('upload-to-drive', filePath),
-  // Hàm test kết nối SQL (nếu bạn cần dùng)
-  testConnection: (formData) => ipcRenderer.send('test-connection', formData)
+  createSqlBackup: (dbConfig) =>
+    ipcRenderer.invoke("create-sql-backup", dbConfig),
+  uploadToDrive: (filePath) => ipcRenderer.invoke("upload-to-drive", filePath),
+
+  // 3. Hàm test kết nối (nếu bạn đã viết handler tương ứng trong main.js)
+  testConnection: (formData) => ipcRenderer.invoke("test-connection", formData),
+
+  // 4. (Tùy chọn) Lưu cấu hình để lần sau không phải nhập lại
+  saveConfig: (config) => ipcRenderer.invoke("save-config", config),
 });

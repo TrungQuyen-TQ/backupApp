@@ -10,7 +10,8 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "electron-forge publish",
-    "lint": "echo \"No linting configured\""
+    "lint": "echo \"No linting configured\"",
+    "dev": "electron-forge start"
   },
   "keywords": [],
   "author": {
@@ -38,6 +39,7 @@
     "@mui/material": "^7.3.7",
     "electron-squirrel-startup": "^1.0.1",
     "googleapis": "^170.0.0",
-    "mssql": "^12.2.0"
+    "mssql": "^12.2.0",
+    "ssh2-sftp-client": "^12.0.1"
   }
 }
