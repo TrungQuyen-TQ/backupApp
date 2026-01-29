@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, ipcMain } from "electron";
 import path from "node:path";
 import fs from "node:fs";
 import { google } from "googleapis";
@@ -12,91 +12,107 @@ if (started) {
   app.quit();
 }
 
-// 1. CẤU HÌNH ĐƯỜNG DẪN
-// client_secret.json để trong thư mục configs của dự án
-const CREDENTIALS_PATH = path.join(process.cwd(), "configs", "client_secret.json");
-// token.json lưu vào AppData hệ thống để tránh lỗi "Read-only" và lỗi quyền ghi
+// ==========================================================
+// 1. CẤU HÌNH ĐƯỜNG DẪN DUY NHẤT (Sửa lỗi Duplicate Declaration)
+// ==========================================================
+const CONFIG_DIR = path.join(process.cwd(), "configs");
+const CREDENTIALS_PATH = path.join(CONFIG_DIR, "client_secret.json");
+const CONTACTS_PATH = path.join(CONFIG_DIR, "contacts.json");
 const TOKEN_PATH = path.join(app.getPath('userData'), "token.json");
 
+// Thêm scope gmail.send để gửi mail cho Team
+const SCOPES = [
+  "https://www.googleapis.com/auth/drive.file",
+  "https://www.googleapis.com/auth/gmail.send"
+];
+
+// ==========================================================
+// 2. CÁC HÀM XỬ LÝ LOGIC (GOOGLE & EMAIL)
+// ==========================================================
+
 /**
- * Hàm xác thực OAuth2 - Đã sửa lỗi "Login Required"
+ * Hàm gửi Email cho danh sách Team từ file contacts.json
+ */
+async function sendEmailNotifications(auth, fileName) {
+  if (!fs.existsSync(CONTACTS_PATH)) {
+    console.error("Không tìm thấy file configs/contacts.json");
+    return;
+  }
+
+  const contacts = JSON.parse(fs.readFileSync(CONTACTS_PATH, 'utf8'));
+  const gmail = google.gmail({ version: 'v1', auth });
+
+  for (const email of contacts.emails) {
+    try {
+      const subject = '🔔 [Hệ thống] Backup Database thành công';
+      const utf8Subject = `=?utf-8?B?${Buffer.from(subject).toString('base64')}?=`;
+      const messageParts = [
+        `To: ${email}`,
+        'Content-Type: text/html; charset=utf-8',
+        `Subject: ${utf8Subject}`,
+        '',
+        `Chào bạn,<br><br>Hệ thống thông báo file backup <b>${fileName}</b> đã được upload lên Google Drive thành công.<br>Dữ liệu tạm thời tại thư mục <b>src/temp</b> đã được dọn dẹp tự động.`
+      ];
+      const message = messageParts.join('\n');
+      const encodedMessage = Buffer.from(message)
+        .toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+      await gmail.users.messages.send({
+        userId: 'me',
+        requestBody: { raw: encodedMessage },
+      });
+      console.log(`Đã gửi email thành công tới: ${email}`);
+    } catch (err) {
+      console.error(`Lỗi gửi mail tới ${email}:`, err.message);
+    }
+  }
+}
+
+/**
+ * Hàm xác thực OAuth2 - Đảm bảo trả về đối tượng auth chuẩn
  */
 async function getAuthenticatedClient() {
-  // Kiểm tra nếu đã có token cũ
   if (fs.existsSync(TOKEN_PATH)) {
     try {
       const tokenData = fs.readFileSync(TOKEN_PATH, 'utf8');
       const credentials = JSON.parse(tokenData);
       console.log("Phát hiện Token cũ, đang khởi tạo client...");
-      
-      // Tạo đối tượng auth từ credentials cũ
-      const auth = google.auth.fromJSON(credentials);
-      return auth;
+      return google.auth.fromJSON(credentials);
     } catch (e) {
       console.warn("Token cũ hỏng, đang tiến hành xóa và đăng nhập lại.");
       if (fs.existsSync(TOKEN_PATH)) fs.unlinkSync(TOKEN_PATH);
     }
   }
 
-  // Luồng đăng nhập mới nếu chưa có token hoặc token hỏng
   try {
     console.log("Đang mở trình duyệt để xác thực Google...");
     const client = await authenticate({
       keyfilePath: CREDENTIALS_PATH,
-      scopes: ["https://www.googleapis.com/auth/drive.file"],
-      port: 3000, // Cố định cổng để tránh bị Firewall chặn
+      scopes: SCOPES,
+      port: 3000,
     });
 
     if (client.credentials) {
-      // Lưu token vào thư mục userData
       fs.writeFileSync(TOKEN_PATH, JSON.stringify(client.credentials));
       console.log("Đã lưu Token thành công tại:", TOKEN_PATH);
       
-      // QUAN TRỌNG: Tạo và trả về đối tượng OAuth2 chuẩn từ credentials mới
       const auth = new google.auth.OAuth2();
       auth.setCredentials(client.credentials);
       return auth;
     }
   } catch (error) {
-    console.error("LỖI XÁC THỰC GOOGLE:");
-    if (error.response) console.error("Chi tiết từ Google API:", error.response.data);
+    console.error("LỖI XÁC THỰC GOOGLE:", error.message);
     throw error;
   }
 }
 
-// --- HANDLER: UPLOAD LÊN GOOGLE DRIVE ---
-ipcMain.handle("upload-to-drive", async (event, filePath) => {
-  try {
-    // Lấy auth đã được xác thực
-    const auth = await getAuthenticatedClient();
-    if (!auth) throw new Error("Không thể xác thực tài khoản Google.");
+// ==========================================================
+// 3. IPC MAIN HANDLERS (DÀNH CHO REACT GỌI)
+// ==========================================================
 
-    const drive = google.drive({ version: "v3", auth });
-
-    const fileName = path.basename(filePath);
-    const media = {
-      mimeType: "application/octet-stream",
-      body: fs.createReadStream(filePath),
-    };
-
-    console.log(`Đang upload file ${fileName} lên Google Drive...`);
-    const response = await drive.files.create({
-      requestBody: { name: fileName },
-      media: media,
-      fields: "id",
-    });
-
-    console.log("Upload lên My Drive thành công! ID:", response.data.id);
-    return { success: true, fileId: response.data.id, fileName: fileName };
-  } catch (error) {
-    console.error("Lỗi Drive:", error.message);
-    return { success: false, error: error.message };
-  }
-});
-
-// --- HANDLER: TẠO BACKUP SQL SERVER ---
+// --- HANDLER: TẠO BACKUP TRONG THƯ MỤC TEMP ---
 ipcMain.handle("create-sql-backup", async (event, dbConfig) => {
-  const backupDir = "C:/hls_output";
+  const backupDir = path.join(process.cwd(), "src", "temp"); 
   if (!fs.existsSync(backupDir)) {
     fs.mkdirSync(backupDir, { recursive: true });
   }
@@ -118,11 +134,61 @@ ipcMain.handle("create-sql-backup", async (event, dbConfig) => {
     const query = `BACKUP DATABASE [${dbConfig.database}] TO DISK = '${filePath}'`;
     await pool.request().query(query);
     await pool.close();
-    console.log("Đã tạo file backup tại:", filePath);
+    console.log("Đã tạo file backup tạm thời tại:", filePath);
     return { success: true, filePath: filePath, fileName: fileName };
   } catch (err) {
     console.error("Lỗi SQL Backup:", err.message);
     return { success: false, error: err.message };
+  }
+});
+
+// --- HANDLER: UPLOAD, GỬI MAIL VÀ DỌN DẸP ---
+ipcMain.handle("upload-to-drive", async (event, filePath) => {
+  try {
+    const auth = await getAuthenticatedClient();
+    const drive = google.drive({ version: "v3", auth });
+    
+    // Tìm hoặc tạo folder SQL_Backups
+    const folderName = "SQL_Backups";
+    let folderId = "";
+    const listResponse = await drive.files.list({
+      q: `name = '${folderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+      fields: 'files(id)',
+    });
+
+    if (listResponse.data.files.length > 0) {
+      folderId = listResponse.data.files[0].id;
+    } else {
+      const folder = await drive.files.create({
+        resource: { name: folderName, mimeType: 'application/vnd.google-apps.folder' },
+        fields: 'id',
+      });
+      folderId = folder.data.id;
+    }
+
+    const fileName = path.basename(filePath);
+    const response = await drive.files.create({
+      requestBody: { name: fileName, parents: [folderId] },
+      media: { body: fs.createReadStream(filePath) },
+      fields: "id",
+    });
+
+    if (response.data.id) {
+      console.log("Upload thành công. Đang gửi email cho Team...");
+      
+      // Gửi thông báo Gmail
+      await sendEmailNotifications(auth, fileName);
+      
+      // TỰ ĐỘNG DỌN DẸP
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+        console.log(`Đã dọn dẹp file tạm tại: ${filePath}`);
+      }
+    }
+    return { success: true, fileId: response.data.id };
+  } catch (error) {
+    console.error("Lỗi Drive:", error.message);
+    return { success: false, error: error.message };
   }
 });
 
@@ -145,7 +211,9 @@ ipcMain.handle("test-connection", async (event, dbConfig) => {
   }
 });
 
-// Khởi tạo cửa sổ ứng dụng
+// ==========================================================
+// 4. KHỞI TẠO CỬA SỔ ỨNG DỤNG
+// ==========================================================
 const createWindow = () => {
   const mainWindow = new BrowserWindow({
     width: 1050,
@@ -163,11 +231,9 @@ const createWindow = () => {
 };
 
 app.on("ready", createWindow);
-
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
-
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });

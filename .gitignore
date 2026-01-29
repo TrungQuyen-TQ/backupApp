@@ -95,3 +95,6 @@ typings/
 out/
 
 configs/client_secret.json
+
+
+src/temp/*.bak
