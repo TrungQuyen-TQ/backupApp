@@ -96,5 +96,6 @@ out/
 
 configs/client_secret.json
 
+configs/
 
 src/temp/*.bak

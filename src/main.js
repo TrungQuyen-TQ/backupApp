@@ -15,6 +15,8 @@ const CREDENTIALS_PATH = path.join(CONFIG_DIR, "client_secret.json");
 const CONTACTS_PATH = path.join(CONFIG_DIR, "contacts.json");
 const TOKEN_PATH = path.join(app.getPath('userData'), "token.json");
 const SCOPES = ["https://www.googleapis.com/auth/drive.file", "https://www.googleapis.com/auth/gmail.send"];
+const SftpClient = require('ssh2-sftp-client');
+const SSH_CONFIG_PATH = path.join(CONFIG_DIR, "ssh_config.json");
 
 // ==========================================================
 // 1. HÀM TRUY VẤN SQL (Lấy stats tự động quét bảng)
@@ -131,25 +133,51 @@ ipcMain.handle("check-database-info", async (event, dbConfig) => {
   }
 });
 
+
+
 ipcMain.handle("create-sql-backup", async (event, dbConfig) => {
-  const backupDir = path.join(process.cwd(), "src", "temp");
-  if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
+  // 1. Khởi tạo đường dẫn
+  const tempDirOnWindows = path.join(process.cwd(), "src", "temp");
+  if (!fs.existsSync(tempDirOnWindows)) fs.mkdirSync(tempDirOnWindows, { recursive: true });
+
   const fileName = `${dbConfig.database}_${Date.now()}.bak`;
-  const filePath = path.join(backupDir, fileName);
+  const filePathOnWindows = path.join(tempDirOnWindows, fileName);
+  const filePathOnUbuntu = `/var/opt/mssql/data/${fileName}`; // SQL Server có quyền ghi ở đây
+
+  const sftp = new SftpClient();
 
   try {
+    // 2. Kết nối SQL Server để ra lệnh Backup
     const pool = await sql.connect({
-      user: dbConfig.user, password: dbConfig.password, server: dbConfig.server,
-      database: dbConfig.database, port: Number(dbConfig.port),
+      user: dbConfig.user, password: dbConfig.password, 
+      server: dbConfig.server, database: dbConfig.database, 
+      port: Number(dbConfig.port),
       options: { encrypt: true, trustServerCertificate: true }
     });
+
     const stats = await getDatabaseStats(pool);
-    await pool.request().query(`BACKUP DATABASE [${dbConfig.database}] TO DISK = '${filePath}'`);
-    await pool.request().query(`RESTORE VERIFYONLY FROM DISK = '${filePath}'`);
+
+    // RA LỆNH BACKUP TRÊN SERVER (Lưu vào ổ cứng Ubuntu)
+    await pool.request().query(`BACKUP DATABASE [${dbConfig.database}] TO DISK = '${filePathOnUbuntu}' WITH INIT`);
     await pool.close();
-    return { success: true, filePath, fileName, stats };
+
+    // 3. ĐỌC CẤU HÌNH SSH VÀ KÉO FILE VỀ WINDOWS QUA SFTP
+    if (!fs.existsSync(SSH_CONFIG_PATH)) throw new Error("Thiếu file ssh_config.json");
+    const sshConfig = JSON.parse(fs.readFileSync(SSH_CONFIG_PATH, 'utf8'));
+
+    await sftp.connect(sshConfig);
+    
+    // Tải file từ Ubuntu về Windows
+    await sftp.fastGet(filePathOnUbuntu, filePathOnWindows);
+
+    // Xóa file tạm trên Ubuntu sau khi đã tải về thành công
+    await sftp.delete(filePathOnUbuntu);
+    await sftp.end();
+
+    return { success: true, filePath: filePathOnWindows, fileName, stats };
   } catch (err) {
-    return { success: false, error: err.message };
+    if (sftp) await sftp.end();
+    return { success: false, error: `Lỗi quy trình: ${err.message}` };
   }
 });
 
@@ -161,6 +189,7 @@ ipcMain.handle("upload-to-drive", async (event, { filePath, stats }) => {
     let folderId = list.data.files.length > 0 ? list.data.files[0].id : (await drive.files.create({ resource: { name: 'SQL_Backups', mimeType: 'application/vnd.google-apps.folder' }, fields: 'id' })).data.id;
 
     const fileName = path.basename(filePath);
+    console.log(fileName);
     await drive.files.create({
       requestBody: { name: fileName, parents: [folderId] },
       media: { body: fs.createReadStream(filePath) }
