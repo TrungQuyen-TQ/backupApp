@@ -1,16 +1,31 @@
 import { defineConfig } from 'vite';
+import { viteStaticCopy } from 'vite-plugin-static-copy';
 
-// https://vitejs.dev/config
-export default {
+export default defineConfig({
   build: {
     rollupOptions: {
+      // Các thư viện Node.js thuần hoặc thư viện lớn nên để external
       external: [
-        'google-auth-library',
-        'local-auth',
         'electron',
-        'googleapis', // Thêm dòng này vào
-        'mssql',      // Thêm cả mssql nếu bạn dùng để kết nối SQL Server
+        'googleapis',
+        'google-auth-library',
+        '@google-cloud/local-auth',
+        'mssql',
+        'ssh2-sftp-client',
+        'node:path',
+        'node:fs'
       ],
     },
   },
-};
+  plugins: [
+    // Tự động copy thư mục configs vào thư mục out/dist khi build
+    viteStaticCopy({
+      targets: [
+        {
+          src: 'configs/*',
+          dest: 'configs'
+        }
+      ]
+    })
+  ]
+});
