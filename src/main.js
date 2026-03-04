@@ -29,32 +29,41 @@ const SSH_CONFIG_PATH = path.join(CONFIG_DIR, "ssh_config.json");
 
 async function getAuthenticatedClient() {
   try {
-    // 1. Kiểm tra nếu đã có token lưu từ trước
+    // 1. Nếu đã có token lưu từ trước
     if (fs.existsSync(TOKEN_PATH)) {
       const tokenData = fs.readFileSync(TOKEN_PATH, "utf8");
       const token = JSON.parse(tokenData);
 
-      // Đọc file credentials để lấy client_id và client_secret
       const credentialsContent = fs.readFileSync(CREDENTIALS_PATH, "utf8");
-      const keys =
-        JSON.parse(credentialsContent).installed ||
-        JSON.parse(credentialsContent).web;
+      const keys = JSON.parse(credentialsContent).installed || JSON.parse(credentialsContent).web;
 
-      // Khởi tạo OAuth2 client chuẩn
       const auth = new google.auth.OAuth2(
         keys.client_id,
         keys.client_secret,
-        keys.redirect_uris[0],
+        keys.redirect_uris[0]
       );
 
-      // Nạp token vào client
       auth.setCredentials(token);
-
       return auth;
     }
+
+    // 2. NẾU CHƯA CÓ TOKEN: Tiến hành đăng nhập mới
+    // Sử dụng thư viện authenticate từ @google-cloud/local-auth đã import ở đầu file
+    const auth = await authenticate({
+      keyfilePath: CREDENTIALS_PATH,
+      scopes: SCOPES,
+    });
+
+    // 3. Lưu token mới lại để lần sau không phải đăng nhập nữa
+    if (auth.credentials) {
+      fs.writeFileSync(TOKEN_PATH, JSON.stringify(auth.credentials));
+    }
+
+    return auth;
   } catch (error) {
     console.error("Lỗi xác thực Google:", error);
-    throw error;
+    // Trả về lỗi rõ ràng để UI có thể hiển thị
+    throw new Error("unauthorized_client: Vui lòng kiểm tra cấu hình Google Cloud hoặc Test Users.");
   }
 }
 
