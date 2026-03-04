@@ -6,6 +6,15 @@ import started from "electron-squirrel-startup";
 import sql from "mssql";
 import { authenticate } from "@google-cloud/local-auth";
 import SftpClient from "ssh2-sftp-client"; // Đã chuyển sang import đồng nhất
+import { backupSQLServer } from './backups/sqlserver.js';
+import { backupMySQL } from './backups/mysql.js';
+import { backupMongoDB } from './backups/mongodb.js';
+
+const backupHandlers = {
+  sqlserver: backupSQLServer,
+  mysql: backupMySQL,
+  // mongodb: backupMongoDB
+};
 
 // Bây giờ bạn có thể xóa bỏ tất cả các dòng const require bên dưới
 if (started) {
@@ -185,53 +194,28 @@ ipcMain.handle("check-database-info", async (event, dbConfig) => {
 });
 
 ipcMain.handle("create-sql-backup", async (event, dbConfig) => {
-  // 1. Khởi tạo đường dẫn
-  const tempDirOnWindows = path.join(process.cwd(), "src", "temp");
-  if (!fs.existsSync(tempDirOnWindows))
-    fs.mkdirSync(tempDirOnWindows, { recursive: true });
-
-  const fileName = `${dbConfig.database}_${Date.now()}.bak`;
-  const filePathOnWindows = path.join(tempDirOnWindows, fileName);
-  const filePathOnUbuntu = `/var/opt/mssql/data/${fileName}`; // SQL Server có quyền ghi ở đây
-
-  const sftp = new SftpClient();
-
   try {
-    // 2. Kết nối SQL Server
-    const pool = await sql.connect({
-      user: dbConfig.user,
-      password: dbConfig.password,
-      server: dbConfig.server,
-      database: dbConfig.database,
-      port: Number(dbConfig.port),
-      options: { encrypt: true, trustServerCertificate: true },
-    });
+    const { dbType } = dbConfig;
+    const handler = backupHandlers[dbType];
+    
+    if (!handler) {
+      throw new Error(`Loại database ${dbType} chưa được hỗ trợ.`);
+    }
 
-    const stats = await getDatabaseStats(pool);
+    // Đọc SSH Config một lần ở đây để truyền vào handler nếu cần (như SQL Server)
+    let sshConfig = null;
+    if (fs.existsSync(SSH_CONFIG_PATH)) {
+      sshConfig = JSON.parse(fs.readFileSync(SSH_CONFIG_PATH, "utf8"));
+    }
 
-    // RA LỆNH BACKUP TRÊN SERVER UBUNTU
-    await pool
-      .request()
-      .query(
-        `BACKUP DATABASE [${dbConfig.database}] TO DISK = '${filePathOnUbuntu}' WITH INIT`,
-      );
-    await pool.close();
-
-    // 3. KÉO FILE VỀ QUA SFTP
-    if (!fs.existsSync(SSH_CONFIG_PATH))
-      throw new Error("Thiếu file ssh_config.json");
-    const sshConfig = JSON.parse(fs.readFileSync(SSH_CONFIG_PATH, "utf8"));
-
-    await sftp.connect(sshConfig);
-    await sftp.fastGet(filePathOnUbuntu, filePathOnWindows);
-    await sftp.delete(filePathOnUbuntu); // Xóa file tạm trên Ubuntu
-    await sftp.end();
-
-    return { success: true, filePath: filePathOnWindows, fileName, stats };
+    const result = await handler(dbConfig, sshConfig);
+    
+    return result;
   } catch (err) {
-    if (sftp) await sftp.end();
-    return { success: false, error: `Lỗi quy trình: ${err.message}` };
+    console.error("Lỗi Backup:", err);
+    return { success: false, error: err.message };
   }
+ 
 });
 
 ipcMain.handle("upload-to-drive", async (event, { filePath, stats }) => {

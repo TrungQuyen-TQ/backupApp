@@ -109,7 +109,7 @@ const [isLoading, setIsLoading] = useState(false);
     }
   };
 
-  // 4. Hàm Cloud Upload (Backup + Đẩy lên Drive)
+
   const handleCloudUpload = async () => {
     setIsLoading(true);
     try {
@@ -124,7 +124,7 @@ const [isLoading, setIsLoading] = useState(false);
 
         if (driveResult.success) {
           alert(
-            "Thành công! File đã lên Google Drive. ID: " + driveResult.fileId,
+            "Thành công! File đã lên Google Drive.  " 
           );
         } else {
           alert("Lỗi khi upload Drive: " + driveResult.error);
@@ -135,7 +135,6 @@ const [isLoading, setIsLoading] = useState(false);
     } catch (err) {
       alert("Lỗi hệ thống: " + err.message);
     }finally {
-    // Kết thúc: Cho dù thành công hay lỗi, nút sẽ được enable trở lại
     setIsLoading(false);
   }
   };
