@@ -29,7 +29,8 @@ async function getDatabaseStats(pool) {
 }
 
 export async function backupSQLServer(dbConfig, sshConfig) {
-  const tempDirOnWindows = path.join(process.cwd(), "src", "temp");
+  const folderName = `${dbConfig.server || 'unknown-ip'}_${dbConfig.dbType || 'sqlserver'}_${dbConfig.database || 'unknown-db'}`;
+  const tempDirOnWindows = path.join(process.cwd(), "src", "temp", folderName);
   if (!fs.existsSync(tempDirOnWindows)) {
     fs.mkdirSync(tempDirOnWindows, { recursive: true });
   }

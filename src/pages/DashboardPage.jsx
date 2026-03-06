@@ -12,12 +12,14 @@ import { BackupModal } from "../components/BackupModal";
 import { LogItem } from "../components/LogItem";
 import { TabsHeader } from "../components/TabsHeader";
 import { ConnectionForm } from "../components/ConnectionForm";
+import { UploadPopup } from "../components/UploadPopup";
 
 const DashboardPage = ({ showMsg }) => {
   const [activeTab, setActiveTab] = useState(0);
   const [formData, setFormData] = useState({
     server: "127.0.0.1",
     database: "master",
+    dbType: "sqlserver",
     user: "sa",
     password: "MatKhauCuaBan@123",
     port: "1433",
@@ -28,6 +30,9 @@ const DashboardPage = ({ showMsg }) => {
   const [backingUpId, setBackingUpId] = useState(null);
   const [showBackupModal, setShowBackupModal] = useState(false);
   const [backupStats, setBackupStats] = useState(null);
+  
+  // States cho Upload Popup
+  const [showUploadPopup, setShowUploadPopup] = useState(false);
 
   // 1. Kiểm tra kết nối
   const handleTestConnection = async () => {
@@ -95,23 +100,25 @@ const DashboardPage = ({ showMsg }) => {
     }
   };
 
-  // 5. Upload Cloud
-  const handleCloudUpload = async () => {
+  // 5. Mở Popup Upload Cloud
+  const handleOpenUploadPopup = () => {
+    setShowUploadPopup(true);
+  };
+
+  // 6. Xử lý Upload nhiều file sau khi chọn từ Popup
+  const handleUploadFiles = async (filesToUpload) => {
     setIsLoading(true);
+    setShowUploadPopup(false); // Ẩn popup trong lúc upload
+    
     try {
-      const backupResult = await window.electronAPI.createSqlBackup(formData);
-      if (backupResult.success) {
-        const driveResult = await window.electronAPI.uploadToDrive({
-          filePath: backupResult.filePath,
-          stats: backupResult.stats || {},
-        });
-        if (driveResult.success) {
-          showMsg("Thành công! File đã lên Google Drive.", "success");
-        } else {
-          showMsg("Lỗi upload: " + driveResult.error, "error");
-        }
+      const driveResult = await window.electronAPI.uploadToDrive({
+        files: filesToUpload
+      });
+      
+      if (driveResult.success) {
+        showMsg("Thành công! Các file đã lên Google Drive.", "success");
       } else {
-        showMsg("Lỗi backup: " + backupResult.error, "error");
+        showMsg("Có lỗi xảy ra: " + driveResult.error, "error");
       }
     } catch (err) {
       showMsg("Lỗi hệ thống: " + err.message, "error");
@@ -128,6 +135,13 @@ const DashboardPage = ({ showMsg }) => {
         data={backupStats}
       />
 
+      <UploadPopup 
+        open={showUploadPopup}
+        onClose={() => setShowUploadPopup(false)}
+        onUpload={handleUploadFiles}
+        showMsg={showMsg}
+      />
+
       {/* CỘT TRÁI: FORM */}
       <Paper elevation={2} sx={{ width: "100%", maxWidth: 600, borderRadius: 2 }}>
         <TabsHeader activeTab={activeTab} setActiveTab={setActiveTab} />
@@ -137,7 +151,7 @@ const DashboardPage = ({ showMsg }) => {
             Kiểm tra
           </Button>
           <Button
-            onClick={handleCloudUpload}
+            onClick={handleOpenUploadPopup}
             variant="contained"
             disabled={isLoading}
             startIcon={isLoading ? <CircularProgress size={20} color="inherit" /> : <CloudIcon />}

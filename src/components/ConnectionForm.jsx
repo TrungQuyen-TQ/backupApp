@@ -106,7 +106,7 @@ export const ConnectionForm = ({ formData, setFormData }) => {
       <FormRow
         label="Database Type"
         name="dbType"
-        value={formData.dbType}
+        value={formData.dbType || ''}
         onChange={handleChange}
         options={dbOptions}
       />

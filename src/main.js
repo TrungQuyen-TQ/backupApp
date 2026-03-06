@@ -206,6 +206,7 @@ ipcMain.handle("create-sql-backup", async (event, dbConfig) => {
   try {
     const { dbType } = dbConfig;
     const handler = backupHandlers[dbType];
+    console.log("Handler:", handler);
     
     if (!handler) {
       throw new Error(`Loại database ${dbType} chưa được hỗ trợ.`);
@@ -227,9 +228,48 @@ ipcMain.handle("create-sql-backup", async (event, dbConfig) => {
  
 });
 
-ipcMain.handle("upload-to-drive", async (event, { filePath, stats }) => {
+ipcMain.handle("get-temp-files", async (event) => {
   try {
-    const auth = await getAuthenticatedClient(); // Hàm này giờ trả về OAuth2Client
+    const tempDir = path.join(process.cwd(), "src", "temp");
+    if (!fs.existsSync(tempDir)) {
+      return { success: true, files: [] };
+    }
+
+    const files = [];
+    const readDirRecursive = (dir) => {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          readDirRecursive(fullPath);
+        } else {
+          const stats = fs.statSync(fullPath);
+          const sizeInMB = (stats.size / (1024 * 1024)).toFixed(2);
+          
+          // Use relative path for UI, replace backslashes with forward slashes 
+          // to make it consistent across platforms
+          const relativePath = path.relative(tempDir, fullPath).replace(/\\/g, '/');
+          
+          files.push({
+            name: relativePath,
+            path: fullPath,
+            size: `${sizeInMB} MB`
+          });
+        }
+      }
+    };
+    readDirRecursive(tempDir);
+
+    return { success: true, files };
+  } catch (error) {
+    console.error("Lỗi đọc thư mục temp:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("upload-to-drive", async (event, { files }) => {
+  try {
+    const auth = await getAuthenticatedClient(); 
     const drive = google.drive({ version: "v3", auth });
 
     // Tìm hoặc tạo thư mục SQL_Backups
@@ -251,19 +291,54 @@ ipcMain.handle("upload-to-drive", async (event, { filePath, stats }) => {
       folderId = folder.data.id;
     }
 
-    const fileName = path.basename(filePath);
-    await drive.files.create({
-      requestBody: { name: fileName, parents: [folderId] },
-      media: { body: fs.createReadStream(filePath) },
-    });
+    // Lặp qua danh sách file và upload từng file
+    const uploadResults = [];
+    for (const fileObj of files) {
+      try {
+        // fileObj.name is like "127.0.0.1_sqlserver_db/backup.bak"
+        // Convert the slash to " - " for a clean Google Drive filename
+        const driveFileName = fileObj.name.replace(/\//g, ' - ');
+        await drive.files.create({
+          requestBody: { name: driveFileName, parents: [folderId] },
+          media: { body: fs.createReadStream(fileObj.path) },
+        });
+        
+        // Sau khi upload thành công, xóa file ở local
+        if (fs.existsSync(fileObj.path)) {
+          fs.unlinkSync(fileObj.path);
+          // Try to remove parent directory if it is empty
+          try {
+            const parentDir = path.dirname(fileObj.path);
+            if (fs.readdirSync(parentDir).length === 0) {
+              fs.rmdirSync(parentDir);
+            }
+          } catch (e) {
+            // Ignore directory removal errors
+          }
+        }
+        
+        uploadResults.push({ name: fileObj.name, success: true });
+      } catch (uploadError) {
+        console.error(`Lỗi upload file ${fileObj.name}:`, uploadError);
+        uploadResults.push({ name: fileObj.name, success: false, error: uploadError.message });
+      }
+    }
 
-    // Lưu ý: hàm sendEmailNotifications cũng phải nhận auth kiểu OAuth2Client
-    await sendEmailNotifications(auth, fileName, stats);
+    // Không gửi email theo yêu cầu mới
 
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-    return { success: true };
+    // Kiểm tra xem có file nào bị lỗi không
+    const hasError = uploadResults.some(r => !r.success);
+    if (hasError) {
+      return { 
+        success: false, 
+        error: "Một số file tải lên không thành công.",
+        results: uploadResults 
+      };
+    }
+
+    return { success: true, results: uploadResults };
   } catch (error) {
-    console.error("Lỗi Drive:", error);
+    console.error("Lỗi Drive Auth/Folder:", error);
     return { success: false, error: error.message };
   }
 });
