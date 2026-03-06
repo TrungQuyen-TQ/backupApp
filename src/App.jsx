@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react"; // SỬA: Thêm useEffect
+import UploadPopup from "./components/UploadPopup";
 import {
   Box,
   Paper,
@@ -19,6 +20,8 @@ import {
   Select,
   Chip,
   LinearProgress, // SỬA: Thêm LinearProgress
+  Snackbar,
+  Alert
 } from "@mui/material";
 import CloudIcon from "@mui/icons-material/Cloud";
 import BackupIcon from "@mui/icons-material/Backup";
@@ -53,23 +56,17 @@ function App() {
   const theme = useTheme();
   const [activeTab, setActiveTab] = useState(0);
   const [formData, setFormData] = useState({
-    // server: "127.0.0.1",
-    // sshPort: "22", // THÊM DÒNG NÀY
-    // database: "master",
-    // user: "sa",
-    // password: "MatKhauCuaBan@123",
-    // port: "1433",
-    // SSH Info
+
     server: "127.0.0.1",
     sshPort: "22",
-    user: "ubuntu", 
+    user: "ubuntu",
     password: "",
     // Database Info (Mới)
     dbType: "sqlserver",
     port: "1433",
     dbUser: "sa",      // Username riêng cho SQL
     dbPassword: "",    // Password riêng cho SQL
-    
+
   });
   const [isLoading, setIsLoading] = useState(false);
   const [connectionLogs, setConnectionLogs] = useState([]);
@@ -80,11 +77,21 @@ function App() {
   const [showInputDbModal, setShowInputDbModal] = useState(false);
   const [selectedLogForBackup, setSelectedLogForBackup] = useState(null);
 
-  const [dbList, setDbList] = useState([]); 
-  const [selectedDbs, setSelectedDbs] = useState([]); 
+  const [dbList, setDbList] = useState([]);
+  const [selectedDbs, setSelectedDbs] = useState([]);
   const [isFetchingDbs, setIsFetchingDbs] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
+  const [showUploadPopup, setShowUploadPopup] = useState(false);
+
+  const [isLoggedIn, setIsLoggedIn] = useState(true);
+
+  // Quản lý trạng thái thông báo (Snackbar)
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: "",
+    severity: "success", // success, error, warning, info
+  });
 
   // SỬA: Đảm bảo window.electronAPI tồn tại trước khi đăng ký event
   useEffect(() => {
@@ -94,6 +101,32 @@ function App() {
       });
     }
   }, []);
+
+  const showMsg = (msg, type = "success") => {
+    setSnackbar({ open: true, message: msg, severity: type });
+  };
+
+  /**
+   * Logic xử lý đăng nhập
+   * Bạn có thể thay đổi logic này để kiểm tra qua electronAPI
+   */
+  const handleLogin = (username, password) => {
+    // Giả lập kiểm tra tài khoản đơn giản cho Desktop App
+    if (username === "admin" && password === "123") {
+      setIsLoggedIn(true);
+      showMsg("Đăng nhập thành công!", "success");
+    } else {
+      showMsg("Tài khoản hoặc mật khẩu không chính xác", "error");
+    }
+  };
+
+  /**
+   * Hàm đóng Snackbar
+   */
+  const handleCloseSnackbar = (event, reason) => {
+    if (reason === 'clickaway') return;
+    setSnackbar({ ...snackbar, open: false });
+  };
 
   const handleTestConnection = async () => {
     const result = await window.electronAPI.testConnection(formData);
@@ -146,24 +179,29 @@ function App() {
     }
   };
 
-  const handleCloudUpload = async () => {
-    setIsUploading(true);
-    setUploadProgress(0);
+  const handleOpenUploadPopup = () => {
+    setShowUploadPopup(true);
+  };
+
+  // 6. Xử lý Upload nhiều file sau khi chọn từ Popup
+  const handleUploadFiles = async (filesToUpload) => {
+    setIsLoading(true);
+    setShowUploadPopup(false); // Ẩn popup trong lúc upload
+
     try {
-      const backupResult = await window.electronAPI.createSqlBackup(formData);
-      if (backupResult.success) {
-        const driveResult = await window.electronAPI.uploadToDrive({
-          filePath: backupResult.filePath,
-          stats: backupResult.stats || {},
-        });
-        if (driveResult.success) alert("🎉 Đã tải lên thành công!");
-        else alert("❌ Lỗi: " + driveResult.error);
+      const driveResult = await window.electronAPI.uploadToDrive({
+        files: filesToUpload
+      });
+
+      if (driveResult.success) {
+        showMsg("Thành công! Các file đã lên Google Drive.", "success");
+      } else {
+        showMsg("Có lỗi xảy ra: " + driveResult.error, "error");
       }
     } catch (err) {
-      alert("⚠️ Lỗi hệ thống: " + err.message);
+      showMsg("Lỗi hệ thống: " + err.message, "error");
     } finally {
-      setIsUploading(false);
-      setUploadProgress(0);
+      setIsLoading(false);
     }
   };
 
@@ -171,7 +209,7 @@ function App() {
     setSelectedLogForBackup(log);
     setIsFetchingDbs(true);
     setShowInputDbModal(true);
-    setSelectedDbs([]); 
+    setSelectedDbs([]);
     try {
       const result = await window.electronAPI.getDatabasesList(log);
       if (result.success) setDbList(result.databases);
@@ -190,9 +228,12 @@ function App() {
       const currentConfig = { ...selectedLogForBackup, database: dbName };
       await handleBackupSpecificDb(currentConfig);
     }
-    setSelectedDbs([]); 
+    setSelectedDbs([]);
   };
-
+  const handleClose = (event, reason) => {
+    if (reason === 'clickaway') return; // Tránh đóng khi click ra ngoài nếu muốn
+    setSnackbar((prev) => ({ ...prev, open: false }));
+  };
   const handleSelectChange = (event) => {
     const { target: { value } } = event;
     setSelectedDbs(typeof value === 'string' ? value.split(',') : value);
@@ -200,6 +241,12 @@ function App() {
 
   return (
     <Box sx={{ bgcolor: "#eaeff1", minHeight: "100vh", p: 3, display: "flex", gap: 2 }}>
+      <UploadPopup
+        open={showUploadPopup}
+        onClose={() => setShowUploadPopup(false)}
+        onUpload={handleUploadFiles}
+        showMsg={showMsg}
+      />
       
       {/* MODAL 1: MULTIPLE SELECT */}
       <Modal open={showInputDbModal} onClose={() => setShowInputDbModal(false)}>
@@ -260,12 +307,12 @@ function App() {
         <Box sx={{ flex: 1, overflowY: 'auto' }}>
           <ConnectionForm formData={formData} setFormData={setFormData} onConnectSuccess={handleTestConnection} />
         </Box>
-        
+
         {/* SỬA: Đưa nút Cloud vào cuối Cột Trái để giao diện cân đối */}
         <Box sx={{ p: 2, borderTop: '1px solid #eee', bgcolor: '#fff' }}>
           <Button
             fullWidth
-            onClick={handleCloudUpload}
+            onClick={handleOpenUploadPopup}
             variant="contained"
             startIcon={isUploading ? <CircularProgress size={20} color="inherit" /> : <CloudIcon />}
             disabled={isLoading || isUploading}
@@ -273,10 +320,10 @@ function App() {
           >
             {isUploading ? `Đang tải lên (${uploadProgress}%)` : 'Đẩy lên Google Drive'}
             {isUploading && (
-              <LinearProgress 
-                variant="determinate" 
-                value={uploadProgress} 
-                sx={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 4 }} 
+              <LinearProgress
+                variant="determinate"
+                value={uploadProgress}
+                sx={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 4 }}
               />
             )}
           </Button>
@@ -312,6 +359,22 @@ function App() {
           ))}
         </List>
       </Paper>
+
+      {/* SNACKBAR THÔNG BÁO */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+      >
+        <Alert
+          onClose={handleCloseSnackbar}
+          severity={snackbar.severity}
+          sx={{ width: "100%" }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

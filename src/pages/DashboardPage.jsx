@@ -12,7 +12,7 @@ import { BackupModal } from "../components/BackupModal";
 import { LogItem } from "../components/LogItem";
 import { TabsHeader } from "../components/TabsHeader";
 import { ConnectionForm } from "../components/ConnectionForm";
-import { UploadPopup } from "../components/UploadPopup";
+import UploadPopup from "../components/UploadPopup";
 
 const DashboardPage = ({ showMsg }) => {
   const [activeTab, setActiveTab] = useState(0);

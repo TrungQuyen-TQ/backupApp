@@ -12,10 +12,11 @@ import {
   Checkbox,
   Typography,
   CircularProgress,
-  Box
+  Box,
+  ListItemButton,
 } from "@mui/material";
 
-export const UploadPopup = ({ open, onClose, onUpload, showMsg }) => {
+const UploadPopup = ({ open, onClose, onUpload, showMsg }) => {
   const [files, setFiles] = useState([]);
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -70,7 +71,7 @@ export const UploadPopup = ({ open, onClose, onUpload, showMsg }) => {
       showMsg("Vui lòng chọn ít nhất 1 file để upload.", "warning");
       return;
     }
-    
+
     // Pass selected files and their paths back to parent
     const filesToUpload = files.filter(file => selectedFiles.includes(file.name));
     onUpload(filesToUpload);
@@ -90,9 +91,9 @@ export const UploadPopup = ({ open, onClose, onUpload, showMsg }) => {
           </Typography>
         ) : (
           <List sx={{ width: '100%', bgcolor: 'background.paper' }}>
-            <ListItem 
-              dense 
-              button 
+            <ListItem
+              dense
+              button
               onClick={handleToggleAll}
               sx={{ borderBottom: '1px solid #eee', mb: 1 }}
             >
@@ -107,20 +108,26 @@ export const UploadPopup = ({ open, onClose, onUpload, showMsg }) => {
               </ListItemIcon>
               <ListItemText primary={<Typography variant="subtitle2">Chọn tất cả</Typography>} />
             </ListItem>
-            
+
+            {/* Thay thế đoạn map cũ bằng đoạn này */}
             {files.map((file) => {
               const labelId = `checkbox-list-label-${file.name}`;
               return (
                 <ListItem
                   key={file.name}
+                  disablePadding
+                  // secondaryAction sẽ được render bên trong ListItem nhưng ngoài ListItemButton
                   secondaryAction={
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" color="text.secondary" sx={{ mr: 1 }}>
                       {file.size}
                     </Typography>
                   }
-                  disablePadding
                 >
-                  <ListItem button onClick={() => handleToggle(file.name)} dense>
+                  <ListItemButton
+                    onClick={() => handleToggle(file.name)}
+                    dense
+                    sx={{ pr: 8 }} // Tạo khoảng trống bên phải để không đè lên secondaryAction
+                  >
                     <ListItemIcon>
                       <Checkbox
                         edge="start"
@@ -130,8 +137,12 @@ export const UploadPopup = ({ open, onClose, onUpload, showMsg }) => {
                         inputProps={{ 'aria-labelledby': labelId }}
                       />
                     </ListItemIcon>
-                    <ListItemText id={labelId} primary={file.name} />
-                  </ListItem>
+                    <ListItemText
+                      id={labelId}
+                      primary={file.name}
+                      primaryTypographyProps={{ noWrap: true }} // Tránh tràn chữ nếu tên file quá dài
+                    />
+                  </ListItemButton>
                 </ListItem>
               );
             })}
@@ -142,9 +153,9 @@ export const UploadPopup = ({ open, onClose, onUpload, showMsg }) => {
         <Button onClick={onClose} color="inherit">
           Hủy
         </Button>
-        <Button 
-          onClick={handleUploadClick} 
-          variant="contained" 
+        <Button
+          onClick={handleUploadClick}
+          variant="contained"
           disabled={isLoading || selectedFiles.length === 0}
         >
           Tải lên Drive ({selectedFiles.length})
@@ -153,3 +164,4 @@ export const UploadPopup = ({ open, onClose, onUpload, showMsg }) => {
     </Dialog>
   );
 };
+export default UploadPopup;
