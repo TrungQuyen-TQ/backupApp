@@ -162,8 +162,8 @@ async function sendEmailNotifications(auth, fileName, stats) {
 ipcMain.handle("test-connection", async (event, dbConfig) => {
   try {
     const pool = await sql.connect({
-      user: dbConfig.user,
-      password: dbConfig.password,
+      user: dbConfig.dbUser,
+      password: dbConfig.dbPassword,
       server: dbConfig.server,
       database: dbConfig.database,
       port: Number(dbConfig.port),
@@ -183,8 +183,8 @@ ipcMain.handle("test-connection", async (event, dbConfig) => {
 ipcMain.handle("check-database-info", async (event, dbConfig) => {
   try {
     const pool = await sql.connect({
-      user: dbConfig.user,
-      password: dbConfig.password,
+      user: dbConfig.dbUser,
+      password: dbConfig.dbPassword,
       server: dbConfig.server,
       database: dbConfig.database,
       port: Number(dbConfig.port),
@@ -203,68 +203,194 @@ ipcMain.handle("check-database-info", async (event, dbConfig) => {
 });
 
 ipcMain.handle("create-sql-backup", async (event, dbConfig) => {
+  // 1. Khởi tạo đường dẫn lưu tạm trên Windows
+  const tempDirOnWindows = path.join(process.cwd(), "src", "temp");
+  if (!fs.existsSync(tempDirOnWindows)) {
+    fs.mkdirSync(tempDirOnWindows, { recursive: true });
+  }
+
+  const fileName = `${dbConfig.database}_${Date.now()}.bak`;
+  const filePathOnWindows = path.join(tempDirOnWindows, fileName);
+  
+  // Đường dẫn tạm trên Ubuntu (SQL Server Linux cần quyền ghi vào đây)
+  const filePathOnUbuntu = `/var/opt/mssql/data/${fileName}`; 
+
+  const sftp = new SftpClient();
+
   try {
-    const { dbType } = dbConfig;
-    const handler = backupHandlers[dbType];
-    
-    if (!handler) {
-      throw new Error(`Loại database ${dbType} chưa được hỗ trợ.`);
-    }
+    console.log(`--- BẮT ĐẦU QUY TRÌNH BACKUP: ${dbConfig.database} ---`);
 
-    // Đọc SSH Config một lần ở đây để truyền vào handler nếu cần (như SQL Server)
-    let sshConfig = null;
-    if (fs.existsSync(SSH_CONFIG_PATH)) {
-      sshConfig = JSON.parse(fs.readFileSync(SSH_CONFIG_PATH, "utf8"));
-    }
+    // 2. KẾT NỐI SQL SERVER ĐỂ RA LỆNH BACKUP
+    const pool = await sql.connect({
+      user: dbConfig.dbUser,
+      password: dbConfig.dbPassword,
+      server: dbConfig.server,
+      database: dbConfig.database,
+      port: Number(dbConfig.port), // Port của SQL Server (vd: 1433)
+      options: { 
+        encrypt: true, 
+        trustServerCertificate: true,
+        connectTimeout: 10000 
+      },
+    });
 
-    const result = await handler(dbConfig, sshConfig);
+    // Lấy thông tin stats (số dòng các bảng) trước khi backup để gửi mail sau này
+    const stats = await getDatabaseStats(pool);
+
+    console.log("Đang thực hiện lệnh BACKUP DATABASE trên SQL Server...");
+    await pool.request().query(
+      `BACKUP DATABASE [${dbConfig.database}] TO DISK = '${filePathOnUbuntu}' WITH INIT`
+    );
+    await pool.close();
+    console.log("Backup trên Server thành công.");
+
+    // 3. KẾT NỐI SFTP BẰNG THÔNG TIN ĐỘNG (Sử dụng sshPort từ giao diện)
+    console.log(`Đang kết nối SFTP tới ${dbConfig.server} qua Port ${dbConfig.sshPort || 22}...`);
+    await sftp.connect({
+      host: dbConfig.server,
+      port: Number(dbConfig.sshPort) || 22, // SỬA: Dùng port động từ giao diện
+      username: dbConfig.user,          // SSH Username
+      password: dbConfig.password,      // SSH Password
+      readyTimeout: 15000,
+    });
+
+    console.log("Đang tải file .bak về máy local...");
+    // Tải file từ Ubuntu về Windows
+    await sftp.fastGet(filePathOnUbuntu, filePathOnWindows);
     
-    return result;
+    console.log("Đang xóa file tạm trên Server Ubuntu...");
+    // Xóa file tạm trên Server để tránh đầy ổ cứng Server
+    await sftp.delete(filePathOnUbuntu); 
+    
+    await sftp.end();
+
+    console.log("Hoàn tất quy trình kéo file về máy local.");
+    return { 
+      success: true, 
+      filePath: filePathOnWindows, 
+      fileName, 
+      stats 
+    };
+
   } catch (err) {
-    console.error("Lỗi Backup:", err);
-    return { success: false, error: err.message };
+    // Luôn đóng kết nối sftp nếu có lỗi xảy ra giữa chừng
+    try { await sftp.end(); } catch (e) {}
+    console.error("Lỗi quy trình backup:", err.message);
+    return { success: false, error: `Lỗi quy trình: ${err.message}` };
   }
  
 });
 
 ipcMain.handle("upload-to-drive", async (event, { filePath, stats }) => {
-  try {
-    const auth = await getAuthenticatedClient(); // Hàm này giờ trả về OAuth2Client
-    const drive = google.drive({ version: "v3", auth });
+  const MAX_RETRIES = 3; // SỬA: Khai báo số lần thử lại tối đa (Ý 3)
+  let attempt = 0;
 
-    // Tìm hoặc tạo thư mục SQL_Backups
-    const list = await drive.files.list({
-      q: "name = 'SQL_Backups' and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
-    });
+  // SỬA: Kiểm tra file tồn tại và lấy dung lượng trước khi upload (Ý 3)
+  if (!fs.existsSync(filePath)) {
+    return { success: false, error: "File không tồn tại trên local." };
+  }
+  const fileStats = fs.statSync(filePath);
+  const fileSize = fileStats.size;
 
-    let folderId;
-    if (list.data.files.length > 0) {
-      folderId = list.data.files[0].id;
-    } else {
-      const folder = await drive.files.create({
-        requestBody: {
-          name: "SQL_Backups",
-          mimeType: "application/vnd.google-apps.folder",
-        },
-        fields: "id",
+  while (attempt < MAX_RETRIES) {
+    try {
+      const auth = await getAuthenticatedClient(); 
+      const drive = google.drive({ version: "v3", auth });
+
+      // --- PHẦN TÌM/TẠO FOLDER (Giữ nguyên logic của bạn) ---
+      const list = await drive.files.list({
+        q: "name = 'SQL_Backups' and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
       });
-      folderId = folder.data.id;
+
+      let folderId;
+      if (list.data.files.length > 0) {
+        folderId = list.data.files[0].id;
+      } else {
+        const folder = await drive.files.create({
+          requestBody: {
+            name: "SQL_Backups",
+            mimeType: "application/vnd.google-apps.folder",
+          },
+          fields: "id",
+        });
+        folderId = folder.data.id;
+      }
+
+      // --- PHẦN SỬA CHÍNH: UPLOAD CÓ THEO DÕI TIẾN TRÌNH ---
+      const fileName = path.basename(filePath);
+      
+      await drive.files.create({
+        requestBody: { name: fileName, parents: [folderId] },
+        media: { body: fs.createReadStream(filePath) },
+      }, {
+        // SỬA: Thêm option onUploadProgress để tính % (Ý 2)
+        onUploadProgress: (evt) => {
+          const progress = Math.round((evt.bytesRead / fileSize) * 100);
+          // Gửi sự kiện 'upload-progress' về cho React (phải cài đặt ở preload.js)
+          event.sender.send("upload-progress", progress);
+        },
+      });
+
+      // SỬA: Sau khi upload xong mới gửi email và xóa file
+      await sendEmailNotifications(auth, fileName, stats);
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+
+      return { success: true };
+
+    } catch (error) {
+      attempt++;
+      console.error(`Lần thử ${attempt} thất bại:`, error.message);
+      
+      // SỬA: Nếu chưa hết số lần thử, đợi 2 giây rồi chạy lại vòng lặp (Ý 3)
+      if (attempt < MAX_RETRIES) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      } else {
+        return { success: false, error: `Lỗi sau ${MAX_RETRIES} lần thử: ${error.message}` };
+      }
     }
+  }
+});
 
-    const fileName = path.basename(filePath);
-    await drive.files.create({
-      requestBody: { name: fileName, parents: [folderId] },
-      media: { body: fs.createReadStream(filePath) },
+// Thêm vào main.js
+ipcMain.handle("get-databases-list", async (event, dbConfig) => {
+  try {
+    const pool = await sql.connect({
+      user: dbConfig.dbUser,
+      password: dbConfig.dbPassword,
+      server: dbConfig.server,
+      port: Number(dbConfig.port),
+      options: { encrypt: true, trustServerCertificate: true },
     });
+    // Truy vấn lấy danh sách database (loại trừ các database hệ thống)
+    const result = await pool.request().query(`
+      SELECT name FROM sys.databases 
+      WHERE name NOT IN ('master', 'tempdb', 'model', 'msdb')
+    `);
+    await pool.close();
+    return { success: true, databases: result.recordset.map(r => r.name) };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
 
-    // Lưu ý: hàm sendEmailNotifications cũng phải nhận auth kiểu OAuth2Client
-    await sendEmailNotifications(auth, fileName, stats);
-
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+// main.js
+ipcMain.handle("test-ssh-connection", async (event, config) => {
+  const SftpClient = require("ssh2-sftp-client");
+  const sftp = new SftpClient();
+  console.log("Đang thử kết nối SSH với config:", config);
+  try {
+    await sftp.connect({
+      host: config.server,
+      port: Number(config.sshPort) || 22, // SỬA: Lấy port từ input, mặc định là 22
+      username: config.user,
+      password: config.password,
+      readyTimeout: 15000, // Timeout sau 5s nếu không kết nối được
+    });
+    await sftp.end();
     return { success: true };
-  } catch (error) {
-    console.error("Lỗi Drive:", error);
-    return { success: false, error: error.message };
+  } catch (err) {
+    // Trả về lỗi chi tiết để hiển thị lên UI
+    return { success: false, error: "Kết nối Server thất bại: " + err.message };
   }
 });
 
