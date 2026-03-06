@@ -6,6 +6,15 @@ import started from "electron-squirrel-startup";
 import sql from "mssql";
 import { authenticate } from "@google-cloud/local-auth";
 import SftpClient from "ssh2-sftp-client"; // Đã chuyển sang import đồng nhất
+import { backupSQLServer } from './backups/sqlserver.js';
+import { backupMySQL } from './backups/mysql.js';
+import { backupMongoDB } from './backups/mongodb.js';
+
+const backupHandlers = {
+  sqlserver: backupSQLServer,
+  mysql: backupMySQL,
+  // mongodb: backupMongoDB
+};
 
 // Bây giờ bạn có thể xóa bỏ tất cả các dòng const require bên dưới
 if (started) {
@@ -269,6 +278,7 @@ ipcMain.handle("create-sql-backup", async (event, dbConfig) => {
     console.error("Lỗi quy trình backup:", err.message);
     return { success: false, error: `Lỗi quy trình: ${err.message}` };
   }
+ 
 });
 
 ipcMain.handle("upload-to-drive", async (event, { filePath, stats }) => {
