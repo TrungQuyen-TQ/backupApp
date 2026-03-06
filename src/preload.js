@@ -1,23 +1,3 @@
-// const { contextBridge, ipcRenderer } = require("electron");
-
-// contextBridge.exposeInMainWorld("electronAPI", {
-//   // Hàm upload đã viết ở các bước trước
-//   createSqlBackup: (dbConfig) =>
-//     ipcRenderer.invoke("create-sql-backup", dbConfig),
-//   uploadToDrive: (filePath) => ipcRenderer.invoke("upload-to-drive", filePath),
-
-//   // 3. Hàm test kết nối (nếu bạn đã viết handler tương ứng trong main.js)
-//   testConnection: (formData) => ipcRenderer.invoke("test-connection", formData),
-
-//   // 4. (Tùy chọn) Lưu cấu hình để lần sau không phải nhập lại
-//   saveConfig: (config) => ipcRenderer.invoke("save-config", config),
-
-//   // Thêm dòng này vào trong contextBridge.exposeInMainWorld của preload.js
-//   checkSqlVersion: (dbConfig) => ipcRenderer.invoke("check-sql-version", dbConfig),
-
-//   checkDatabaseInfo: (config) => ipcRenderer.invoke("check-database-info", config),
-// });
-
 
 const { contextBridge, ipcRenderer } = require("electron");
 
@@ -39,6 +19,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // (Tùy chọn) Lưu cấu hình
   saveConfig: (config) => ipcRenderer.invoke("save-config", config),
+
+  // Thêm vào preload.js
+  getDatabasesList: (config) => ipcRenderer.invoke("get-databases-list", config),
+  // Thêm vào preload.js
+  onUploadProgress: (callback) => ipcRenderer.on("upload-progress", (event, value) => callback(value)),
+
+  // Thêm dòng này
+  testSSHConnection: (config) => ipcRenderer.invoke("test-ssh-connection", config),
 });
 
 
