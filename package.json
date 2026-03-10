@@ -39,11 +39,20 @@
     "@google-cloud/local-auth": "^3.0.1",
     "@mui/icons-material": "^7.3.7",
     "@mui/material": "^7.3.7",
+    "archiver": "^7.0.1",
+    "archiver-zip-encryptable": "^1.0.10",
+    "aws4": "^1.13.2",
     "electron-squirrel-startup": "^1.0.1",
     "google-auth-library": "^10.5.0",
     "googleapis": "^170.1.0",
+    "kerberos": "^7.0.0",
     "local-auth": "^0.0.3",
+    "mongodb": "^7.1.0",
     "mssql": "^12.2.0",
-    "ssh2-sftp-client": "^12.0.1"
+    "mysql2": "^3.19.0",
+    "pg": "^8.20.0",
+    "saslprep": "^1.0.3",
+    "snappy": "^7.3.3",
+    "ssh2-sftp-client": "^12.1.0"
   }
 }
