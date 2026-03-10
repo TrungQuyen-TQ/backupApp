@@ -6,17 +6,29 @@ import started from "electron-squirrel-startup";
 import sql from "mssql";
 import { authenticate } from "@google-cloud/local-auth";
 import SftpClient from "ssh2-sftp-client"; // Đã chuyển sang import đồng nhất
-import { backupSQLServer } from './backups/sqlserver.js';
-import { backupMySQL } from './backups/mysql.js';
-import { backupMongoDB } from './backups/mongodb.js';
+import archiver from 'archiver';
+import zipEncryptable from 'archiver-zip-encryptable';
+import { testConnectionHandlers } from "./handlers/testConnectionHandlers.js";
+import { backupHandlers } from "./handlers/backupHandlers.js";
+import { fileURLToPath } from 'node:url';
+import { registerMSSQLHandlers } from "./ipc/db-mssql.js";
+import { registerMySQLHandlers } from "./ipc/db-mysql.js";
+import { registerMongoHandlers } from "./ipc/db-mongo.js";
+import { registerPostgresHandlers } from "./ipc/db-postgres.js";
 
-const backupHandlers = {
-  sqlserver: backupSQLServer,
-  mysql: backupMySQL,
-  // mongodb: backupMongoDB
-};
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-// Bây giờ bạn có thể xóa bỏ tất cả các dòng const require bên dưới
+// --- Đăng ký định dạng nén (bọc try-catch để tránh lỗi registerFormat) ---
+try {
+  const registeredFormats = archiver.registeredFormats || {};
+  if (!registeredFormats['zip-encryptable']) {
+    archiver.registerFormat('zip-encryptable', zipEncryptable);
+  }
+} catch (e) {
+  console.warn("Format đã được đăng ký");
+}
+
 if (started) {
   app.quit();
 }
@@ -30,11 +42,6 @@ const SCOPES = [
   "https://www.googleapis.com/auth/drive.file",
   "https://www.googleapis.com/auth/gmail.send",
 ];
-const SSH_CONFIG_PATH = path.join(CONFIG_DIR, "ssh_config.json");
-
-// ==========================================================
-// 1. HÀM TRUY VẤN SQL (Lấy stats tự động quét bảng)
-// ==========================================================
 
 async function getAuthenticatedClient() {
   try {
@@ -160,23 +167,22 @@ async function sendEmailNotifications(auth, fileName, stats) {
 // ==========================================================
 
 ipcMain.handle("test-connection", async (event, dbConfig) => {
+  console.log("Testing connection with config:", dbConfig);
+  
   try {
-    const pool = await sql.connect({
-      user: dbConfig.dbUser,
-      password: dbConfig.dbPassword,
-      server: dbConfig.server,
-      database: dbConfig.database,
-      port: Number(dbConfig.port),
-      options: {
-        encrypt: true,
-        trustServerCertificate: true,
-        connectTimeout: 5000,
-      },
-    });
-    await pool.close();
-    return { success: true };
+    const handler = testConnectionHandlers[dbConfig.dbType];
+
+    if (!handler) {
+      throw new Error("Database type not supported");
+    }
+
+    return await handler(dbConfig);
+
   } catch (err) {
-    return { success: false, error: err.message };
+    return {
+      success: false,
+      error: err.message
+    };
   }
 });
 
@@ -203,82 +209,13 @@ ipcMain.handle("check-database-info", async (event, dbConfig) => {
 });
 
 ipcMain.handle("create-sql-backup", async (event, dbConfig) => {
-  // 1. Khởi tạo đường dẫn lưu tạm trên Windows
-  const tempDirOnWindows = path.join(process.cwd(), "src", "temp");
-  if (!fs.existsSync(tempDirOnWindows)) {
-    fs.mkdirSync(tempDirOnWindows, { recursive: true });
+ const handler = backupHandlers[dbConfig.dbType];
+
+  if (!handler) {
+    return { success: false, error: "Unsupported database type" };
   }
 
-  const fileName = `${dbConfig.database}_${Date.now()}.bak`;
-  const filePathOnWindows = path.join(tempDirOnWindows, fileName);
-
-  // Đường dẫn tạm trên Ubuntu (SQL Server Linux cần quyền ghi vào đây)
-  const filePathOnUbuntu = `/var/opt/mssql/data/${fileName}`;
-
-  const sftp = new SftpClient();
-
-  try {
-    console.log(`--- BẮT ĐẦU QUY TRÌNH BACKUP: ${dbConfig.database} ---`);
-
-    // 2. KẾT NỐI SQL SERVER ĐỂ RA LỆNH BACKUP
-    const pool = await sql.connect({
-      user: dbConfig.dbUser,
-      password: dbConfig.dbPassword,
-      server: dbConfig.server,
-      database: dbConfig.database,
-      port: Number(dbConfig.port), // Port của SQL Server (vd: 1433)
-      options: {
-        encrypt: true,
-        trustServerCertificate: true,
-        connectTimeout: 10000
-      },
-    });
-
-    // Lấy thông tin stats (số dòng các bảng) trước khi backup để gửi mail sau này
-    const stats = await getDatabaseStats(pool);
-
-    console.log("Đang thực hiện lệnh BACKUP DATABASE trên SQL Server...");
-    await pool.request().query(
-      `BACKUP DATABASE [${dbConfig.database}] TO DISK = '${filePathOnUbuntu}' WITH INIT`
-    );
-    await pool.close();
-    console.log("Backup trên Server thành công.");
-
-    // 3. KẾT NỐI SFTP BẰNG THÔNG TIN ĐỘNG (Sử dụng sshPort từ giao diện)
-    console.log(`Đang kết nối SFTP tới ${dbConfig.server} qua Port ${dbConfig.sshPort || 22}...`);
-    await sftp.connect({
-      host: dbConfig.server,
-      port: Number(dbConfig.sshPort) || 22, // SỬA: Dùng port động từ giao diện
-      username: dbConfig.user,          // SSH Username
-      password: dbConfig.password,      // SSH Password
-      readyTimeout: 15000,
-    });
-
-    console.log("Đang tải file .bak về máy local...");
-    // Tải file từ Ubuntu về Windows
-    await sftp.fastGet(filePathOnUbuntu, filePathOnWindows);
-
-    console.log("Đang xóa file tạm trên Server Ubuntu...");
-    // Xóa file tạm trên Server để tránh đầy ổ cứng Server
-    await sftp.delete(filePathOnUbuntu);
-
-    await sftp.end();
-
-    console.log("Hoàn tất quy trình kéo file về máy local.");
-    return {
-      success: true,
-      filePath: filePathOnWindows,
-      fileName,
-      stats
-    };
-
-  } catch (err) {
-    // Luôn đóng kết nối sftp nếu có lỗi xảy ra giữa chừng
-    try { await sftp.end(); } catch (e) { }
-    console.error("Lỗi quy trình backup:", err.message);
-    return { success: false, error: `Lỗi quy trình: ${err.message}` };
-  }
-
+  return await handler(dbConfig);
 });
 
 ipcMain.handle("get-temp-files", async (event) => {
@@ -325,80 +262,69 @@ ipcMain.handle("upload-to-drive", async (event, { files }) => {
     const auth = await getAuthenticatedClient();
     const drive = google.drive({ version: "v3", auth });
 
-    // --- PHẦN TÌM/TẠO FOLDER (Giữ nguyên logic của bạn) ---
+    // --- Logic tìm/tạo folder (giữ nguyên) ---
     const list = await drive.files.list({
       q: "name = 'SQL_Backups' and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
     });
+    let folderId = list.data.files.length > 0 ? list.data.files[0].id : (await drive.files.create({
+      requestBody: { name: "SQL_Backups", mimeType: "application/vnd.google-apps.folder" },
+      fields: "id",
+    })).data.id;
 
-    let folderId;
-    if (list.data.files.length > 0) {
-      folderId = list.data.files[0].id;
-    } else {
-      const folder = await drive.files.create({
-        requestBody: {
-          name: "SQL_Backups",
-          mimeType: "application/vnd.google-apps.folder",
-        },
-        fields: "id",
-      });
-      folderId = folder.data.id;
-    }
     const uploadResults = [];
+
     for (const fileObj of files) {
       try {
-        // fileObj.name is like "127.0.0.1_sqlserver_db/backup.bak"
-        // Convert the slash to " - " for a clean Google Drive filename
         const driveFileName = fileObj.name.replace(/\//g, ' - ');
+        const fileSize = fs.statSync(fileObj.path).size;
+        let uploadedBytes = 0;
+        let lastTime = Date.now();
+
         await drive.files.create({
           requestBody: { name: driveFileName, parents: [folderId] },
           media: { body: fs.createReadStream(fileObj.path) },
+        }, {
+          // Theo dõi tiến trình upload
+          onUploadProgress: (evt) => {
+            const currentTime = Date.now();
+            const duration = (currentTime - lastTime) / 1000; // giây
+            if (duration > 0.5) { // Cập nhật mỗi 0.5s để tránh lag UI
+              const bytesSinceLast = evt.bytesRead - uploadedBytes;
+              const speed = (bytesSinceLast / duration) / (1024 * 1024); // MB/s
+              
+              // Gửi thông tin về Renderer
+              event.sender.send("upload-progress", {
+                fileName: fileObj.name,
+                progress: Math.round((evt.bytesRead / fileSize) * 100),
+                speed: speed.toFixed(2) + " MB/s"
+              });
+
+              uploadedBytes = evt.bytesRead;
+              lastTime = currentTime;
+            }
+          }
         });
 
-        // Sau khi upload thành công, xóa file ở local
+        // Xóa file local sau khi xong
         if (fs.existsSync(fileObj.path)) {
           fs.unlinkSync(fileObj.path);
-          // Try to remove parent directory if it is empty
-          try {
-            const parentDir = path.dirname(fileObj.path);
-            if (fs.readdirSync(parentDir).length === 0) {
-              fs.rmdirSync(parentDir);
-            }
-          } catch (e) {
-            // Ignore directory removal errors
-          }
         }
 
+        // Gửi tín hiệu hoàn tất 1 file
+        event.sender.send("file-done", { fileName: fileObj.name, status: "OK" });
         uploadResults.push({ name: fileObj.name, success: true });
+
       } catch (uploadError) {
-        console.error(`Lỗi upload file ${fileObj.name}:`, uploadError);
-        uploadResults.push({ name: fileObj.name, success: false, error: uploadError.message });
+        event.sender.send("file-done", { fileName: fileObj.name, status: "Lỗi", error: uploadError.message });
+        uploadResults.push({ name: fileObj.name, success: false });
       }
-    }
-
-    // Không gửi email theo yêu cầu mới
-
-    // Kiểm tra xem có file nào bị lỗi không
-    const hasError = uploadResults.some(r => !r.success);
-    if (hasError) {
-      return {
-        success: false,
-        error: "Một số file tải lên không thành công.",
-        results: uploadResults
-      };
     }
 
     return { success: true, results: uploadResults };
   } catch (error) {
-    console.error("Lỗi Drive Auth/Folder:", error);
     return { success: false, error: error.message };
   }
 });
-
-
-
-
-
-
 
 // Thêm vào main.js
 ipcMain.handle("get-databases-list", async (event, dbConfig) => {
@@ -424,9 +350,7 @@ ipcMain.handle("get-databases-list", async (event, dbConfig) => {
 
 // main.js
 ipcMain.handle("test-ssh-connection", async (event, config) => {
-  const SftpClient = require("ssh2-sftp-client");
   const sftp = new SftpClient();
-  console.log("Đang thử kết nối SSH với config:", config);
   try {
     await sftp.connect({
       host: config.server,
@@ -443,23 +367,48 @@ ipcMain.handle("test-ssh-connection", async (event, config) => {
   }
 });
 
+// ensure constants exist to avoid crash when plugin hasn't injected them
+const VITE_WINDOW_NAME = typeof MAIN_WINDOW_VITE_NAME !== "undefined" ? MAIN_WINDOW_VITE_NAME : "main_window";
 const createWindow = () => {
   const win = new BrowserWindow({
     width: 1100,
     height: 900,
-    webPreferences: { preload: path.join(__dirname, "preload.js") },
+    webPreferences: { 
+      // __dirname đã được định nghĩa chuẩn ở đầu file của bạn
+      preload: path.join(__dirname, "preload.js"),
+      disableBlinkFeatures: "AutomationControlled"
+    },
   });
 
-  // Kiểm tra biến môi trường an toàn
-  if (typeof MAIN_WINDOW_VITE_DEV_SERVER_URL !== "undefined") {
+  // Kiểm tra biến Vite an toàn để tránh ReferenceError
+  if (typeof MAIN_WINDOW_VITE_DEV_SERVER_URL !== "undefined" && MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     win.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
   } else {
-    win.loadFile(
-      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
-    );
+    // Nếu là bản build, load file index.html
+    // Lưu ý: path.join(__dirname, "../index.html") tùy thuộc vào cấu trúc thư mục out của bạn
+    const indexPath = path.join(__dirname, "..", "renderer", "main_window", "index.html");
+    if (fs.existsSync(indexPath)) {
+      win.loadFile(indexPath);
+    } else {
+      win.loadFile(path.join(__dirname, "../index.html"));
+    }
   }
 };
-app.on("ready", createWindow);
+
+// CHỈ gọi createWindow khi app đã ready
+app.whenReady().then(() => {
+
+  registerMSSQLHandlers();
+  registerMySQLHandlers();
+  registerMongoHandlers();
+  registerPostgresHandlers();
+  createWindow();
+
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+});
+
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
