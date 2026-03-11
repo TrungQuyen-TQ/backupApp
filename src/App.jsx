@@ -91,6 +91,20 @@ function App() {
     severity: "success", // success, error, warning, info
   });
 
+// Hàm xử lý khi nhấn nút "Đẩy lên Google Drive" gốc
+const handleOpenDriveSelection = () => {
+  setShowUploadPopup(true); // Mở thẳng UploadPopup thay vì showDriveSelectModal
+};
+
+// Hàm upload thực tế sau khi đã chọn Drive
+const handleFinalUpload = async () => {
+  if (!selectedDriveEmail) return showMsg("Vui lòng chọn Drive!", "error");
+  setShowDriveSelectModal(false);
+  
+  // Gọi popup chọn file của bạn (UploadPopup)
+  setShowUploadPopup(true); 
+};
+
   // SỬA: Đảm bảo window.electronAPI tồn tại trước khi đăng ký event
   useEffect(() => {
     if (window.electronAPI?.onUploadProgress) {
@@ -189,24 +203,31 @@ function App() {
   };
 
   // 6. Xử lý Upload nhiều file sau khi chọn từ Popup
-  const handleUploadFiles = async (filesToUpload) => {
+  const handleUploadFiles = async (filesToUpload, targetEmail) => {
+    //setShowUploadPopup(false); // Ẩn popup trong lúc upload
     setIsLoading(true);
-    setShowUploadPopup(false); // Ẩn popup trong lúc upload
+    setIsUploading(true); // Kích hoạt trạng thái đang upload trên nút ở Cột Trái
+    setShowUploadPopup(false);
 
     try {
+      //const driveResult = await window.electronAPI.uploadToDrive({
+       // files: filesToUpload,
+      //});
       const driveResult = await window.electronAPI.uploadToDrive({
-        files: filesToUpload,
+      files: filesToUpload,
+      targetEmail: targetEmail // Gửi email được chọn xuống Main Process
       });
 
       if (driveResult.success) {
-        showMsg("Thành công! Các file đã lên Google Drive.", "success");
+        showMsg(`Thành công! Đã tải lên Drive: ${targetEmail}`, "success");
       } else {
-        showMsg("Có lỗi xảy ra: " + driveResult.error, "error");
+        showMsg("Lỗi: " + driveResult.error, "error");
       }
     } catch (err) {
       showMsg("Lỗi hệ thống: " + err.message, "error");
     } finally {
       setIsLoading(false);
+      setIsUploading(false);
     }
   };
 
@@ -673,6 +694,7 @@ function App() {
           {snackbar.message}
         </Alert>
       </Snackbar>
+
     </Box>
   );
 }

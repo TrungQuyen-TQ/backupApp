@@ -43,44 +43,58 @@ const SCOPES = [
   "https://www.googleapis.com/auth/gmail.send",
 ];
 
-async function getAuthenticatedClient() {
+// main.js
+
+// Thêm đường dẫn tới file config mới
+const DRIVE_ACCOUNTS_PATH = path.join(CONFIG_DIR, "drive_accounts.json");
+
+// Handler để đọc danh sách tài khoản
+ipcMain.handle("get-drive-accounts", async () => {
   try {
-    // 1. Nếu đã có token lưu từ trước
-    if (fs.existsSync(TOKEN_PATH)) {
-      const tokenData = fs.readFileSync(TOKEN_PATH, "utf8");
-      const token = JSON.parse(tokenData);
-
-      const credentialsContent = fs.readFileSync(CREDENTIALS_PATH, "utf8");
-      const keys = JSON.parse(credentialsContent).installed || JSON.parse(credentialsContent).web;
-
-      const auth = new google.auth.OAuth2(
-        keys.client_id,
-        keys.client_secret,
-        keys.redirect_uris[0]
-      );
-
-      auth.setCredentials(token);
-      return auth;
+    if (!fs.existsSync(DRIVE_ACCOUNTS_PATH)) {
+      // Tạo file mặc định nếu chưa tồn tại
+      const defaultData = [
+        { email: "linhnguyen05211@gmail.com", label: "Drive Cá Nhân" }
+      ];
+      fs.writeFileSync(DRIVE_ACCOUNTS_PATH, JSON.stringify(defaultData, null, 2));
+      return { success: true, accounts: defaultData };
     }
-
-    // 2. NẾU CHƯA CÓ TOKEN: Tiến hành đăng nhập mới
-    // Sử dụng thư viện authenticate từ @google-cloud/local-auth đã import ở đầu file
-    const auth = await authenticate({
-      keyfilePath: CREDENTIALS_PATH,
-      scopes: SCOPES,
-    });
-
-    // 3. Lưu token mới lại để lần sau không phải đăng nhập nữa
-    if (auth.credentials) {
-      fs.writeFileSync(TOKEN_PATH, JSON.stringify(auth.credentials));
-    }
-
-    return auth;
+    const data = fs.readFileSync(DRIVE_ACCOUNTS_PATH, "utf8");
+    return { success: true, accounts: JSON.parse(data) };
   } catch (error) {
-    console.error("Lỗi xác thực Google:", error);
-    // Trả về lỗi rõ ràng để UI có thể hiển thị
-    throw new Error("unauthorized_client: Vui lòng kiểm tra cấu hình Google Cloud hoặc Test Users.");
+    return { success: false, error: error.message };
   }
+});
+
+// main.js - Cập nhật hàm lấy Token theo Email
+async function getAuthenticatedClient(email) {
+  // Tạo đường dẫn token riêng cho mỗi email
+  //const SAFE_EMAIL = email.replace(/[^a-z0-9]/gi, '_');
+  //const SPECIFIC_TOKEN_PATH = path.join(app.getPath("userData"), `token_${SAFE_EMAIL}.json`);
+  
+  const safeEmail = email.replace(/[^a-z0-9]/gi, "_");
+  const SPECIFIC_TOKEN_PATH = path.join(app.getPath("userData"), `token_${safeEmail}.json`);
+
+  if (fs.existsSync(SPECIFIC_TOKEN_PATH)) {
+    const token = JSON.parse(fs.readFileSync(SPECIFIC_TOKEN_PATH, "utf8"));
+    const credentialsContent = fs.readFileSync(CREDENTIALS_PATH, "utf8");
+    const keys = JSON.parse(credentialsContent).installed || JSON.parse(credentialsContent).web;
+
+    const auth = new google.auth.OAuth2(keys.client_id, keys.client_secret, keys.redirect_uris[0]);
+    auth.setCredentials(token);
+    return auth;
+  }
+
+  // Nếu chưa có token cho email này, bắt đầu quy trình đăng nhập mới
+  const auth = await authenticate({
+    keyfilePath: CREDENTIALS_PATH,
+    scopes: SCOPES,
+  });
+
+  if (auth.credentials) {
+    fs.writeFileSync(SPECIFIC_TOKEN_PATH, JSON.stringify(auth.credentials));
+  }
+  return auth;
 }
 
 async function getDatabaseStats(pool) {
@@ -257,22 +271,26 @@ ipcMain.handle("get-temp-files", async (event) => {
   }
 });
 
-ipcMain.handle("upload-to-drive", async (event, { files }) => {
+ipcMain.handle("upload-to-drive", async (event, { files, targetEmail }) => {
   try {
-    const auth = await getAuthenticatedClient();
+    const auth = await getAuthenticatedClient(targetEmail);
     const drive = google.drive({ version: "v3", auth });
 
-    // --- Logic tìm/tạo folder (giữ nguyên) ---
+    // 1. Tìm hoặc tạo folder SQL_Backups
     const list = await drive.files.list({
       q: "name = 'SQL_Backups' and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
     });
-    let folderId = list.data.files.length > 0 ? list.data.files[0].id : (await drive.files.create({
-      requestBody: { name: "SQL_Backups", mimeType: "application/vnd.google-apps.folder" },
-      fields: "id",
-    })).data.id;
+    
+    let folderId = list.data.files.length > 0 
+      ? list.data.files[0].id 
+      : (await drive.files.create({
+          requestBody: { name: "SQL_Backups", mimeType: "application/vnd.google-apps.folder" },
+          fields: "id",
+        })).data.id;
 
     const uploadResults = [];
 
+    // 2. Vòng lặp upload từng file
     for (const fileObj of files) {
       try {
         const driveFileName = fileObj.name.replace(/\//g, ' - ');
@@ -280,19 +298,19 @@ ipcMain.handle("upload-to-drive", async (event, { files }) => {
         let uploadedBytes = 0;
         let lastTime = Date.now();
 
-        await drive.files.create({
+        // THỰC HIỆN UPLOAD
+        const res = await drive.files.create({
           requestBody: { name: driveFileName, parents: [folderId] },
           media: { body: fs.createReadStream(fileObj.path) },
+          fields: 'id', // Yêu cầu trả về ID để xác nhận thành công
         }, {
-          // Theo dõi tiến trình upload
           onUploadProgress: (evt) => {
             const currentTime = Date.now();
-            const duration = (currentTime - lastTime) / 1000; // giây
-            if (duration > 0.5) { // Cập nhật mỗi 0.5s để tránh lag UI
+            const duration = (currentTime - lastTime) / 1000;
+            if (duration > 0.5) {
               const bytesSinceLast = evt.bytesRead - uploadedBytes;
-              const speed = (bytesSinceLast / duration) / (1024 * 1024); // MB/s
+              const speed = (bytesSinceLast / duration) / (1024 * 1024);
               
-              // Gửi thông tin về Renderer
               event.sender.send("upload-progress", {
                 fileName: fileObj.name,
                 progress: Math.round((evt.bytesRead / fileSize) * 100),
@@ -305,16 +323,19 @@ ipcMain.handle("upload-to-drive", async (event, { files }) => {
           }
         });
 
-        // Xóa file local sau khi xong
+        // Log ra terminal để bạn debug: Nếu có ID nghĩa là file đã thực sự nằm trên Drive
+        console.log(`✅ File [${driveFileName}] đã lên Drive. ID: ${res.data.id}`);
+
+        // 3. Xóa file local sau khi upload thành công
         if (fs.existsSync(fileObj.path)) {
           fs.unlinkSync(fileObj.path);
         }
 
-        // Gửi tín hiệu hoàn tất 1 file
         event.sender.send("file-done", { fileName: fileObj.name, status: "OK" });
-        uploadResults.push({ name: fileObj.name, success: true });
+        uploadResults.push({ name: fileObj.name, success: true, driveId: res.data.id });
 
       } catch (uploadError) {
+        console.error(`❌ Lỗi upload file ${fileObj.name}:`, uploadError);
         event.sender.send("file-done", { fileName: fileObj.name, status: "Lỗi", error: uploadError.message });
         uploadResults.push({ name: fileObj.name, success: false });
       }
@@ -322,6 +343,7 @@ ipcMain.handle("upload-to-drive", async (event, { files }) => {
 
     return { success: true, results: uploadResults };
   } catch (error) {
+    console.error("❌ Lỗi tổng quát upload-to-drive:", error);
     return { success: false, error: error.message };
   }
 });
