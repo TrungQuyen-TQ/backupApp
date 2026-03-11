@@ -519,7 +519,7 @@ function App() {
                 value={uploadProgress}
                 sx={{
                   position: "absolute",
-                  bottom: 0,
+                  bottom: 10,
                   left: 0,
                   right: 0,
                   height: 4,

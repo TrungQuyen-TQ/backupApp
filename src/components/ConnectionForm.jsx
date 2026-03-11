@@ -65,7 +65,6 @@ const dbOptions = [
   { label: "SQL Server", value: "sqlserver" },
   { label: "MySQL", value: "mysql" },
   { label: "MongoDB", value: "mongodb" },
-  { label: "PostgreSQL", value: "postgresql" },
 ];
 
 export const ConnectionForm = ({ formData, setFormData, onConnectSuccess }) => {

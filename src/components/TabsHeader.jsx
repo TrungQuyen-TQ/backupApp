@@ -14,9 +14,8 @@ export const TabsHeader = ({ activeTab, setActiveTab }) => {
           '& .MuiTabs-indicator': { display: 'none' }
         }}
       >
-        <Tab label="Manual" />
-        <Tab label="Auto" />
-        <Tab label="Sync" />
+        <Tab label="Chủ động" />
+        <Tab label="Tự động" />
       </Tabs>
     </Box>
   );
