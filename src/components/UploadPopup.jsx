@@ -15,6 +15,10 @@ import {
   Box,
   ListItemButton,
   LinearProgress,
+  FormControl, // THÊM DÒNG NÀY
+  InputLabel,  // THÊM DÒNG NÀY
+  Select,      // THÊM DÒNG NÀY
+  MenuItem,    // THÊM DÒNG NÀY
 } from "@mui/material";
 
 const UploadPopup = ({ open, onClose, onUpload, showMsg }) => {
@@ -24,13 +28,33 @@ const UploadPopup = ({ open, onClose, onUpload, showMsg }) => {
   
   // Lưu trữ trạng thái upload: { fileName: { progress, speed, status } }
   const [uploadStatus, setUploadStatus] = useState({});
+  // Thêm Select và MenuItem từ @mui/material
+  const [targetEmail, setTargetEmail] = useState("");
+  const [driveAccounts, setDriveAccounts] = useState([]); // Chuyển thành State rỗng
+
 
   useEffect(() => {
     if (open) {
       loadFiles();
+      loadDriveAccounts(); // Gọi hàm tải danh sách Gmail
       setUploadStatus({}); // Reset trạng thái khi mở lại popup
     }
   }, [open]);
+
+  // 2. Hàm load accounts nên để ở phạm vi component để các nơi khác có thể thấy
+  const loadDriveAccounts = async () => {
+    try {
+      const result = await window.electronAPI.getDriveAccounts();
+      if (result.success) {
+        setDriveAccounts(result.accounts);
+        if (result.accounts.length > 0 && !targetEmail) {
+          setTargetEmail(result.accounts[0].email);
+        }
+      }
+    } catch (error) {
+      console.error("Lỗi tải danh sách Drive:", error);
+    }
+  };
 
   useEffect(() => {
   // 1. Lắng nghe tiến trình
@@ -44,7 +68,6 @@ const UploadPopup = ({ open, onClose, onUpload, showMsg }) => {
       },
     }));
   });
-
   // 2. Lắng nghe khi hoàn tất
   const removeDone = window.electronAPI.onFileDone((data) => {
     setUploadStatus((prev) => ({
@@ -98,14 +121,24 @@ const UploadPopup = ({ open, onClose, onUpload, showMsg }) => {
     else setSelectedFiles(files.map((file) => file.name));
   };
 
-  const handleUploadClick = async () => {
-    if (selectedFiles.length === 0) {
-      showMsg("Vui lòng chọn ít nhất 1 file để upload.", "warning");
-      return;
-    }
-    const filesToUpload = files.filter(file => selectedFiles.includes(file.name));
-    onUpload(filesToUpload);
-  };
+  // Sửa lại logic gửi dữ liệu trong UploadPopup.jsx
+const handleUploadClick = () => {
+  if (selectedFiles.length === 0) {
+    showMsg("Vui lòng chọn ít nhất 1 file để upload.", "warning");
+    return;
+  }
+  if (!targetEmail) {
+    showMsg("Vui lòng chọn Drive đích!", "warning");
+    return;
+  }
+
+  // QUAN TRỌNG: Lấy đối tượng file đầy đủ (có .path và .name)
+  const filesToUpload = files.filter(f => selectedFiles.includes(f.name));
+  
+  onUpload(filesToUpload, targetEmail); // Truyền mảng Object thay vì mảng String
+};
+
+
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
@@ -196,13 +229,29 @@ const UploadPopup = ({ open, onClose, onUpload, showMsg }) => {
         )}
       </DialogContent>
       <DialogActions>
+
+        <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+          <InputLabel>Chọn Drive đích</InputLabel>
+          <Select
+            value={targetEmail}
+            label="Chọn Drive đích"
+            onChange={(e) => setTargetEmail(e.target.value)}
+          >
+            {driveAccounts.map((acc) => (
+              <MenuItem key={acc.email} value={acc.email}>
+                {acc.label} ({acc.email})
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+
         <Button onClick={onClose} color="inherit">Hủy</Button>
-        <Button
-          onClick={handleUploadClick}
+        <Button 
+          onClick={handleUploadClick} // Gọi hàm trung gian đã sửa ở trên
+          disabled={selectedFiles.length === 0 || !targetEmail}
           variant="contained"
-          disabled={isLoading || selectedFiles.length === 0}
         >
-          Tải lên ({selectedFiles.length})
+          TẢI LÊN ({selectedFiles.length})
         </Button>
       </DialogActions>
     </Dialog>

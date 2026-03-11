@@ -44,7 +44,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Thêm vào preload.js
   onUploadProgress: (callback) =>
     ipcRenderer.on("upload-progress", (event, value) => callback(value)),
-
+  getDriveAccounts: () => ipcRenderer.invoke("get-drive-accounts"),
   // Thêm dòng này
   testSSHConnection: (config) =>
     ipcRenderer.invoke("test-ssh-connection", config),
@@ -54,4 +54,5 @@ contextBridge.exposeInMainWorld("electronAPI", {
     getMongo: (config) => ipcRenderer.invoke("mongo:get-databases", config),
     getPostgres: (config) => ipcRenderer.invoke("postgres:get-databases", config),  
   }
+
 });
