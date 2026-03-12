@@ -15,81 +15,97 @@ import {
   Box,
   ListItemButton,
   LinearProgress,
-  FormControl, // THÊM DÒNG NÀY
-  InputLabel,  // THÊM DÒNG NÀY
-  Select,      // THÊM DÒNG NÀY
-  MenuItem,    // THÊM DÒNG NÀY
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  OutlinedInput,
+  Chip,
+  useTheme, // Đảm bảo đã import
 } from "@mui/material";
 
+// ĐƯA CÁC HẰNG SỐ LÊN ĐẦU FILE
+const ITEM_HEIGHT = 48;
+const ITEM_PADDING_TOP = 8;
+const MenuProps = {
+  PaperProps: {
+    style: {
+      maxHeight: ITEM_HEIGHT * 4.5 + ITEM_PADDING_TOP,
+      width: 250,
+    },
+  },
+};
+
+function getStyles(email, targetEmails, theme) {
+  return {
+    fontWeight: targetEmails.includes(email)
+      ? theme.typography.fontWeightMedium
+      : theme.typography.fontWeightRegular,
+  };
+}
+
 const UploadPopup = ({ open, onClose, onUpload, showMsg }) => {
+  const theme = useTheme(); // KHỞI TẠO THEME Ở ĐÂY
   const [files, setFiles] = useState([]);
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  
-  // Lưu trữ trạng thái upload: { fileName: { progress, speed, status } }
   const [uploadStatus, setUploadStatus] = useState({});
-  // Thêm Select và MenuItem từ @mui/material
-  const [targetEmail, setTargetEmail] = useState("");
-  const [driveAccounts, setDriveAccounts] = useState([]); // Chuyển thành State rỗng
-
+  
+  // KHỞI TẠO LÀ MẢNG RỖNG [] thay vì chuỗi rỗng ""
+  const [targetEmails, setTargetEmails] = useState([]); 
+  const [driveAccounts, setDriveAccounts] = useState([]);
 
   useEffect(() => {
     if (open) {
       loadFiles();
-      loadDriveAccounts(); // Gọi hàm tải danh sách Gmail
-      setUploadStatus({}); // Reset trạng thái khi mở lại popup
+      loadDriveAccounts();
+      setUploadStatus({});
     }
   }, [open]);
 
-  // 2. Hàm load accounts nên để ở phạm vi component để các nơi khác có thể thấy
+  useEffect(() => {
+    const removeProgress = window.electronAPI.onUploadProgress((data) => {
+      setUploadStatus((prev) => ({
+        ...prev,
+        [data.fileName]: { 
+          ...prev[data.fileName], 
+          progress: data.progress, 
+          speed: data.speed 
+        },
+      }));
+    });
+    const removeDone = window.electronAPI.onFileDone((data) => {
+      setUploadStatus((prev) => ({
+        ...prev,
+        [data.fileName]: { 
+          ...prev[data.fileName], 
+          status: data.status, 
+          progress: 100 
+        },
+      }));
+    });
+
+    return () => {
+      if (typeof removeProgress === 'function') removeProgress();
+      if (typeof removeDone === 'function') removeDone();
+    };
+  }, []);
+
   const loadDriveAccounts = async () => {
     try {
       const result = await window.electronAPI.getDriveAccounts();
       if (result.success) {
         setDriveAccounts(result.accounts);
-        if (result.accounts.length > 0 && !targetEmail) {
-          setTargetEmail(result.accounts[0].email);
-        }
       }
     } catch (error) {
       console.error("Lỗi tải danh sách Drive:", error);
     }
   };
 
-  useEffect(() => {
-  // 1. Lắng nghe tiến trình
-  const removeProgress = window.electronAPI.onUploadProgress((data) => {
-    setUploadStatus((prev) => ({
-      ...prev,
-      [data.fileName]: { 
-        ...prev[data.fileName], 
-        progress: data.progress, 
-        speed: data.speed 
-      },
-    }));
-  });
-  // 2. Lắng nghe khi hoàn tất
-  const removeDone = window.electronAPI.onFileDone((data) => {
-    setUploadStatus((prev) => ({
-      ...prev,
-      [data.fileName]: { 
-        ...prev[data.fileName], 
-        status: data.status, 
-        progress: 100 
-      },
-    }));
-  });
-
-  // HÀM CLEANUP ĐÃ SỬA
-  return () => {
-    if (typeof removeProgress === 'function') {
-      removeProgress();
-    }
-    if (typeof removeDone === 'function') {
-      removeDone();
-    }
+  const handleEmailChange = (event) => {
+    const { target: { value } } = event;
+    setTargetEmails(typeof value === 'string' ? value.split(',') : value);
   };
-}, []); // Chạy 1 lần duy nhất khi mount
 
   const loadFiles = async () => {
     setIsLoading(true);
@@ -121,37 +137,27 @@ const UploadPopup = ({ open, onClose, onUpload, showMsg }) => {
     else setSelectedFiles(files.map((file) => file.name));
   };
 
-  // Sửa lại logic gửi dữ liệu trong UploadPopup.jsx
-const handleUploadClick = () => {
-  if (selectedFiles.length === 0) {
-    showMsg("Vui lòng chọn ít nhất 1 file để upload.", "warning");
-    return;
-  }
-  if (!targetEmail) {
-    showMsg("Vui lòng chọn Drive đích!", "warning");
-    return;
-  }
-
-  // QUAN TRỌNG: Lấy đối tượng file đầy đủ (có .path và .name)
-  const filesToUpload = files.filter(f => selectedFiles.includes(f.name));
-  
-  onUpload(filesToUpload, targetEmail); // Truyền mảng Object thay vì mảng String
-};
-
-
+  const handleUploadClick = () => {
+    if (selectedFiles.length === 0) {
+      showMsg("Vui lòng chọn ít nhất 1 file để upload.", "warning");
+      return;
+    }
+    if (targetEmails.length === 0) {
+      showMsg("Vui lòng chọn ít nhất 1 Drive đích!", "warning");
+      return;
+    }
+    const filesToUpload = files.filter(f => selectedFiles.includes(f.name));
+    onUpload(filesToUpload, targetEmails); 
+  };
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Tải file Backup lên Google Drive</DialogTitle>
+      <DialogTitle sx={{ fontWeight: 'bold' }}>Tải file Backup lên Google Drive</DialogTitle>
       <DialogContent dividers sx={{ p: 0 }}>
         {isLoading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
             <CircularProgress />
           </Box>
-        ) : files.length === 0 ? (
-          <Typography color="text.secondary" align="center" sx={{ py: 3 }}>
-            Không có file backup nào trong thư mục temp.
-          </Typography>
         ) : (
           <List sx={{ width: '100%', bgcolor: 'background.paper', py: 0 }}>
             <ListItem dense sx={{ borderBottom: '1px solid #eee' }}>
@@ -161,66 +167,41 @@ const handleUploadClick = () => {
                     edge="start"
                     checked={selectedFiles.length === files.length && files.length > 0}
                     indeterminate={selectedFiles.length > 0 && selectedFiles.length < files.length}
-                    disableRipple
                   />
                 </ListItemIcon>
-                <ListItemText primary={<Typography variant="subtitle2">Chọn tất cả</Typography>} />
+                <ListItemText primary={<Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>Chọn tất cả</Typography>} />
               </ListItemButton>
             </ListItem>
-
             {files.map((file) => {
               const status = uploadStatus[file.name];
-              const isDone = status?.status === "OK";
-              const isError = status?.status === "Lỗi";
-
               return (
                 <React.Fragment key={file.name}>
                   <ListItem
                     disablePadding
                     secondaryAction={
                       <Box sx={{ textAlign: 'right', mr: 1 }}>
-                        {isDone ? (
-                          <Typography variant="body2" color="success.main" sx={{ fontWeight: 'bold' }}>
-                            Hoàn tất ✓
-                          </Typography>
-                        ) : isError ? (
+                        {status?.status === "OK" ? (
+                          <Typography variant="body2" color="success.main" sx={{ fontWeight: 'bold' }}>Hoàn tất ✓</Typography>
+                        ) : status?.status === "Lỗi" ? (
                           <Typography variant="body2" color="error.main">Lỗi</Typography>
                         ) : (
-                          <Typography variant="body2" color="text.secondary">
-                            {file.size}
-                          </Typography>
+                          <Typography variant="body2" color="text.secondary">{file.size}</Typography>
                         )}
                       </Box>
                     }
                   >
-                    <ListItemButton onClick={() => handleToggle(file.name)} dense sx={{ pr: 12 }}>
+                    <ListItemButton onClick={() => handleToggle(file.name)} dense>
                       <ListItemIcon>
-                        <Checkbox
-                          edge="start"
-                          checked={selectedFiles.includes(file.name)}
-                          disableRipple
-                        />
+                        <Checkbox edge="start" checked={selectedFiles.includes(file.name)} />
                       </ListItemIcon>
                       <ListItemText
                         primary={file.name}
-                        primaryTypographyProps={{ noWrap: true, variant: 'body2' }}
-                        secondary={
-                          status && !isDone && !isError ? (
-                            <Typography variant="caption" color="primary">
-                              {status.progress}% - {status.speed}
-                            </Typography>
-                          ) : null
-                        }
+                        secondary={status && status.status !== "OK" ? `${status.progress}% - ${status.speed}` : null}
                       />
                     </ListItemButton>
                   </ListItem>
-                  {/* Hiển thị thanh Progress bar khi đang upload */}
                   {status && status.progress > 0 && status.progress < 100 && (
-                    <LinearProgress 
-                      variant="determinate" 
-                      value={status.progress} 
-                      sx={{ height: 2, mx: 2, mb: 1 }} 
-                    />
+                    <LinearProgress variant="determinate" value={status.progress} sx={{ height: 2, mx: 2, mb: 1 }} />
                   )}
                 </React.Fragment>
               );
@@ -228,31 +209,42 @@ const handleUploadClick = () => {
           </List>
         )}
       </DialogContent>
-      <DialogActions>
-
-        <FormControl fullWidth size="small" sx={{ mb: 2 }}>
-          <InputLabel>Chọn Drive đích</InputLabel>
+      
+      <DialogActions sx={{ flexDirection: 'column', p: 2, gap: 1.5 }}>
+        <FormControl fullWidth size="small">
+          <InputLabel>Chọn các Drive đích</InputLabel>
           <Select
-            value={targetEmail}
-            label="Chọn Drive đích"
-            onChange={(e) => setTargetEmail(e.target.value)}
+            multiple
+            value={targetEmails}
+            onChange={handleEmailChange}
+            input={<OutlinedInput label="Chọn các Drive đích" />}
+            renderValue={(selected) => (
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                {selected.map((value) => (
+                  <Chip key={value} label={value} size="small" color="primary" variant="outlined" />
+                ))}
+              </Box>
+            )}
+            MenuProps={MenuProps}
           >
             {driveAccounts.map((acc) => (
-              <MenuItem key={acc.email} value={acc.email}>
+              <MenuItem key={acc.email} value={acc.email} style={getStyles(acc.email, targetEmails, theme)}>
                 {acc.label} ({acc.email})
               </MenuItem>
             ))}
           </Select>
         </FormControl>
 
-        <Button onClick={onClose} color="inherit">Hủy</Button>
-        <Button 
-          onClick={handleUploadClick} // Gọi hàm trung gian đã sửa ở trên
-          disabled={selectedFiles.length === 0 || !targetEmail}
-          variant="contained"
-        >
-          TẢI LÊN ({selectedFiles.length})
-        </Button>
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', width: '100%', gap: 1 }}>
+          <Button onClick={onClose} color="inherit">Hủy</Button>
+          <Button 
+            onClick={handleUploadClick}
+            disabled={selectedFiles.length === 0 || targetEmails.length === 0}
+            variant="contained"
+          >
+            TẢI LÊN ({selectedFiles.length})
+          </Button>
+        </Box>
       </DialogActions>
     </Dialog>
   );
