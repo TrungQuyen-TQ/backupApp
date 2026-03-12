@@ -72,15 +72,16 @@ ipcMain.handle("get-drive-accounts", async () => {
 
 // main.js - Cập nhật hàm lấy Token theo Email
 async function getAuthenticatedClient(email) {
-  // Tạo đường dẫn token riêng cho mỗi email
-  //const SAFE_EMAIL = email.replace(/[^a-z0-9]/gi, '_');
-  //const SPECIFIC_TOKEN_PATH = path.join(app.getPath("userData"), `token_${SAFE_EMAIL}.json`);
+  // KIỂM TRA AN TOÀN: Nếu email không tồn tại hoặc không phải string
+  if (!email || typeof email !== 'string') {
+    throw new Error(`Email xác thực không hợp lệ: ${email}`);
+  }
+
+  // const safeEmail = email.replace(/[^a-z0-9]/gi, "_");
+  // const SPECIFIC_TOKEN_PATH = path.join(app.getPath("userData"), `token_${safeEmail}.json`);
 
   const safeEmail = email.replace(/[^a-z0-9]/gi, "_");
-  const SPECIFIC_TOKEN_PATH = path.join(
-    app.getPath("userData"),
-    `token_${safeEmail}.json`,
-  );
+  const SPECIFIC_TOKEN_PATH = path.join(app.getPath("userData"), `token_${safeEmail}.json`);
 
   if (fs.existsSync(SPECIFIC_TOKEN_PATH)) {
     const token = JSON.parse(fs.readFileSync(SPECIFIC_TOKEN_PATH, "utf8"));
@@ -287,6 +288,9 @@ ipcMain.handle("get-temp-files", async (event) => {
 
 ipcMain.handle("upload-to-drive", async (event, { files, targetEmail }) => {
   try {
+    // Kiểm tra log ở Terminal (màn hình đen) để chắc chắn email đã xuống tới đây
+    console.log("Đang bắt đầu upload cho email:", targetEmail);
+
     const auth = await getAuthenticatedClient(targetEmail);
     const drive = google.drive({ version: "v3", auth });
 
@@ -352,9 +356,11 @@ ipcMain.handle("upload-to-drive", async (event, { files, targetEmail }) => {
         );
 
         // 3. Xóa file local sau khi upload thành công
+        /*
         if (fs.existsSync(fileObj.path)) {
-          fs.unlinkSync(fileObj.path);
+          fs.unlinkSync(fileObj.path); 
         }
+        */
 
         event.sender.send("file-done", {
           fileName: fileObj.name,
@@ -379,6 +385,21 @@ ipcMain.handle("upload-to-drive", async (event, { files, targetEmail }) => {
     return { success: true, results: uploadResults };
   } catch (error) {
     console.error("❌ Lỗi tổng quát upload-to-drive:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Thêm đoạn này vào main.js (bên cạnh các ipcMain.handle khác)
+ipcMain.handle("delete-temp-files", async (event, files) => {
+  try {
+    for (const file of files) {
+      if (fs.existsSync(file.path)) {
+        fs.unlinkSync(file.path);
+        console.log(`🗑️ Đã dọn dẹp file tạm: ${file.name}`);
+      }
+    }
+    return { success: true };
+  } catch (error) {
     return { success: false, error: error.message };
   }
 });

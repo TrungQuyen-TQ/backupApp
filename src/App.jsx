@@ -205,24 +205,62 @@ function App() {
   };
 
   // 6. Xử lý Upload nhiều file sau khi chọn từ Popup
-  const handleUploadFiles = async (filesToUpload, targetEmail) => {
-    //setShowUploadPopup(false); // Ẩn popup trong lúc upload
+  // const handleUploadFiles = async (filesToUpload, targetEmails) => {
+  //   setIsLoading(true);
+  //   setIsUploading(true);
+  //   setShowUploadPopup(false);
+
+  //   try {
+  //     // Duyệt qua từng email để upload
+  //     for (const email of targetEmails) {
+  //       const driveResult = await window.electronAPI.uploadToDrive({
+  //         files: filesToUpload,
+  //         targetEmail: email 
+  //       });
+
+  //       if (!driveResult.success) {
+  //         showMsg(`Lỗi khi tải lên ${email}: ${driveResult.error}`, "error");
+  //       }
+  //     }
+  //     showMsg(`Hoàn tất đẩy file lên ${targetEmails.length} Drive.`, "success");
+  //   } catch (err) {
+  //     showMsg("Lỗi hệ thống: " + err.message, "error");
+  //   } finally {
+  //     setIsLoading(false);
+  //     setIsUploading(false);
+  //   }
+  // };
+
+  // App.jsx
+  const handleUploadFiles = async (filesToUpload, targetEmails) => {
     setIsLoading(true);
-    setIsUploading(true); // Kích hoạt trạng thái đang upload trên nút ở Cột Trái
+    setIsUploading(true);
     setShowUploadPopup(false);
 
-    try {
-      
-      const driveResult = await window.electronAPI.uploadToDrive({
-        files: filesToUpload,
-        targetEmail: targetEmail, 
-      });
+    let overallSuccess = true;
 
-      if (driveResult.success) {
-        showMsg(`Thành công! Đã tải lên Drive: ${targetEmail}`, "success");
-      } else {
-        showMsg("Lỗi: " + driveResult.error, "error");
+    try {
+      // 1. Chạy vòng lặp upload cho từng Email
+      for (const email of targetEmails) {
+        const driveResult = await window.electronAPI.uploadToDrive({
+          files: filesToUpload,
+          targetEmail: email 
+        });
+
+        if (!driveResult.success) {
+          overallSuccess = false;
+          showMsg(`Lỗi upload Drive ${email}: ${driveResult.error}`, "error");
+        }
       }
+
+      // 2. CHỈ XÓA FILE SAU KHI TẤT CẢ EMAIL ĐÃ CHẠY XONG
+      if (overallSuccess) {
+        await window.electronAPI.deleteTempFiles(filesToUpload);
+        showMsg(`Hoàn tất đẩy file lên ${targetEmails.length} Drive và đã dọn dẹp file tạm.`, "success");
+      } else {
+        showMsg("Quá trình hoàn tất nhưng có một số Drive bị lỗi. File tạm chưa được xóa để bạn có thể thử lại.", "warning");
+      }
+
     } catch (err) {
       showMsg("Lỗi hệ thống: " + err.message, "error");
     } finally {

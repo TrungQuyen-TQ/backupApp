@@ -45,6 +45,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onUploadProgress: (callback) =>
     ipcRenderer.on("upload-progress", (event, value) => callback(value)),
   getDriveAccounts: () => ipcRenderer.invoke("get-drive-accounts"),
+  deleteTempFiles: (files) => ipcRenderer.invoke("delete-temp-files", files),
   // Thêm dòng này
   testSSHConnection: (config) =>
     ipcRenderer.invoke("test-ssh-connection", config),
