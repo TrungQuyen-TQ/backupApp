@@ -212,12 +212,10 @@ function App() {
     setShowUploadPopup(false);
 
     try {
-      //const driveResult = await window.electronAPI.uploadToDrive({
-      // files: filesToUpload,
-      //});
+      
       const driveResult = await window.electronAPI.uploadToDrive({
         files: filesToUpload,
-        targetEmail: targetEmail, // Gửi email được chọn xuống Main Process
+        targetEmail: targetEmail, 
       });
 
       if (driveResult.success) {

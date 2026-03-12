@@ -48,11 +48,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Thêm dòng này
   testSSHConnection: (config) =>
     ipcRenderer.invoke("test-ssh-connection", config),
+
+  stopAutoBackup: (taskId) => ipcRenderer.invoke("stop-auto-backup", taskId),
+  getAutoConfigs: () => ipcRenderer.invoke("get-auto-configs"),
+  stopAllBackups: () => ipcRenderer.invoke("stop-all-backups"),
+  saveAutoBackup: (config) => ipcRenderer.invoke("save-auto-backup", config),
+
   db: {
     getMSSQL: (config) => ipcRenderer.invoke("mssql:get-databases", config),
     getMySQL: (config) => ipcRenderer.invoke("mysql:get-databases", config),
     getMongo: (config) => ipcRenderer.invoke("mongo:get-databases", config),
-    getPostgres: (config) => ipcRenderer.invoke("postgres:get-databases", config),  
-  }
-
+    getPostgres: (config) =>
+      ipcRenderer.invoke("postgres:get-databases", config),
+  },
 });
