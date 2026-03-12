@@ -434,8 +434,16 @@ function App() {
           <Box sx={{ mt: 4, display: "flex", gap: 1 }}>
             <Button
               fullWidth
-              variant="outlined"
+              //variant="outlined"
               onClick={() => setShowInputDbModal(false)}
+              sx={{ 
+              bgcolor: '#d32f2f', // Màu đỏ (tương đương color error của MUI)
+              color: '#fff',      // Chữ trắng
+              '&:hover': {
+                bgcolor: '#b71c1c', // Màu đỏ đậm hơn khi di chuột vào
+              },
+              px: 3 // Thêm chút padding cho đẹp cân đối với nút bên cạnh
+            }}
             >
               HỦY
             </Button>

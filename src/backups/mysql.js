@@ -45,15 +45,26 @@ export async function backupMySQL(dbConfig) {
     fs.mkdirSync(tempDirOnWindows, { recursive: true });
   }
 
-  const timestamp = Date.now();
-  const sqlFileName = `${dbConfig.database}_${timestamp}.sql`;
-  const zipFileName = `${dbConfig.database}_${timestamp}.zip`;
+
+  // THÊM: Logic tạo timestamp YYYYMMDD_HHmm
+  const now = new Date();
+  const formattedTime = now.getFullYear() + 
+                  String(now.getMonth() + 1).padStart(2, '0') + 
+                  String(now.getDate()).padStart(2, '0') + "_" + 
+                  String(now.getHours()).padStart(2, '0') + 
+                  String(now.getMinutes()).padStart(2, '0');
+
+  const finalZipName = `MYSQL_${dbConfig.database}_${formattedTime}.zip`; // Tên file ZIP đích
+  const rawSqlName = `${dbConfig.database}_${Date.now()}.sql`; // Tên file .sql tạm thời
+  // const timestamp = Date.now();
+  // const sqlFileName = `${dbConfig.database}_${timestamp}.sql`;
+  // const zipFileName = `${dbConfig.database}_${timestamp}.zip`;
   
-  const filePathOnWindows = path.join(tempDirOnWindows, sqlFileName);
-  const zipPathOnWindows = path.join(tempDirOnWindows, zipFileName);
+  const filePathOnWindows = path.join(tempDirOnWindows, rawSqlName);
+  const zipPathOnWindows = path.join(tempDirOnWindows, finalZipName);
   
   // Đường dẫn tạm trên Ubuntu (thường dùng /tmp để tránh lỗi quyền ghi)
-  const filePathOnUbuntu = `/tmp/${sqlFileName}`;
+  const filePathOnUbuntu = `/tmp/${rawSqlName}`;
   const passwordPath = path.join(process.cwd(), "configs", "passwordzip.json");
 
   // 2. Đọc mật khẩu Zip
@@ -94,8 +105,25 @@ export async function backupMySQL(dbConfig) {
     });
 
     // Lệnh tạo file backup trên Ubuntu
+    // const dumpCommand = `mysqldump -u ${dbConfig.dbUser} -p'${dbConfig.dbPassword}' ${dbConfig.database} > ${filePathOnUbuntu}`;
+    // await sftp.client.exec(dumpCommand);
     const dumpCommand = `mysqldump -u ${dbConfig.dbUser} -p'${dbConfig.dbPassword}' ${dbConfig.database} > ${filePathOnUbuntu}`;
-    await sftp.client.exec(dumpCommand);
+
+// SỬA: Sử dụng Promise để đợi lệnh thực thi xong và kiểm tra lỗi
+    await new Promise((resolve, reject) => {
+      if (!sftp.client) return reject(new Error("Kết nối SSH đã bị đóng trước khi chạy lệnh dump."));
+      
+      sftp.client.exec(dumpCommand, (err, stream) => {
+        if (err) return reject(err);
+        stream
+          .on("close", (code) => {
+            if (code === 0) resolve();
+            else reject(new Error(`mysqldump thất bại với mã lỗi: ${code}`));
+          })
+          .on("data", (data) => console.log("STDOUT: " + data))
+          .stderr.on("data", (data) => console.error("STDERR: " + data));
+      });
+    });
 
     // 5. Kéo file về và xóa trên Ubuntu
     await sftp.fastGet(filePathOnUbuntu, filePathOnWindows);
@@ -114,7 +142,7 @@ export async function backupMySQL(dbConfig) {
       archive.on('error', reject);
 
       archive.pipe(output);
-      archive.file(filePathOnWindows, { name: sqlFileName });
+      archive.file(filePathOnWindows, { name: rawSqlName });
       archive.finalize();
     });
 
@@ -126,7 +154,7 @@ export async function backupMySQL(dbConfig) {
     return {
       success: true,
       filePath: zipPathOnWindows,
-      fileName: zipFileName,
+      fileName: finalZipName,
       dbName: dbConfig.database,
       stats: {
         rowCounts: stats.rowCounts,
