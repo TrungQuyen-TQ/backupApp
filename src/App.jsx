@@ -28,7 +28,7 @@ import BackupIcon from "@mui/icons-material/Backup";
 import DeleteIcon from "@mui/icons-material/Delete";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import ErrorIcon from "@mui/icons-material/Error";
-
+import { FormAuto } from "./components/FormAuto";
 import { TabsHeader } from "./components/TabsHeader";
 import { ConnectionForm } from "./components/ConnectionForm";
 import { useTheme } from "@mui/material/styles";
@@ -84,6 +84,8 @@ function App() {
 
   const [isLoggedIn, setIsLoggedIn] = useState(true);
 
+
+
   // Quản lý trạng thái thông báo (Snackbar)
   const [snackbar, setSnackbar] = useState({
     open: false,
@@ -91,19 +93,19 @@ function App() {
     severity: "success", // success, error, warning, info
   });
 
-// Hàm xử lý khi nhấn nút "Đẩy lên Google Drive" gốc
-const handleOpenDriveSelection = () => {
-  setShowUploadPopup(true); // Mở thẳng UploadPopup thay vì showDriveSelectModal
-};
+  // Hàm xử lý khi nhấn nút "Đẩy lên Google Drive" gốc
+  const handleOpenDriveSelection = () => {
+    setShowUploadPopup(true); // Mở thẳng UploadPopup thay vì showDriveSelectModal
+  };
 
-// Hàm upload thực tế sau khi đã chọn Drive
-const handleFinalUpload = async () => {
-  if (!selectedDriveEmail) return showMsg("Vui lòng chọn Drive!", "error");
-  setShowDriveSelectModal(false);
-  
-  // Gọi popup chọn file của bạn (UploadPopup)
-  setShowUploadPopup(true); 
-};
+  // Hàm upload thực tế sau khi đã chọn Drive
+  const handleFinalUpload = async () => {
+    if (!selectedDriveEmail) return showMsg("Vui lòng chọn Drive!", "error");
+    setShowDriveSelectModal(false);
+
+    // Gọi popup chọn file của bạn (UploadPopup)
+    setShowUploadPopup(true);
+  };
 
   // SỬA: Đảm bảo window.electronAPI tồn tại trước khi đăng ký event
   useEffect(() => {
@@ -211,11 +213,11 @@ const handleFinalUpload = async () => {
 
     try {
       //const driveResult = await window.electronAPI.uploadToDrive({
-       // files: filesToUpload,
+      // files: filesToUpload,
       //});
       const driveResult = await window.electronAPI.uploadToDrive({
-      files: filesToUpload,
-      targetEmail: targetEmail // Gửi email được chọn xuống Main Process
+        files: filesToUpload,
+        targetEmail: targetEmail, // Gửi email được chọn xuống Main Process
       });
 
       if (driveResult.success) {
@@ -231,10 +233,12 @@ const handleFinalUpload = async () => {
     }
   };
 
-  const handleOpenBackupConfig = async (log) => {
+  const handleOpenBackupConfig = async (log, showModal = true) => {
     setSelectedLogForBackup(log);
     setIsFetchingDbs(true);
+    if (showModal) {
     setShowInputDbModal(true);
+  }
     setSelectedDbs([]);
     console.log("Log để backup:", log);
     try {
@@ -508,11 +512,26 @@ const handleFinalUpload = async () => {
       >
         <TabsHeader activeTab={activeTab} setActiveTab={setActiveTab} />
         <Box sx={{ flex: 1, overflowY: "auto" }}>
-          <ConnectionForm
-            formData={formData}
-            setFormData={setFormData}
-            onConnectSuccess={handleTestConnection}
-          />
+          {activeTab === 0 && (
+            <ConnectionForm
+              formData={formData}
+              setFormData={setFormData}
+              onConnectSuccess={handleTestConnection}
+            />
+          )}
+
+          {activeTab === 1 && (
+            <Box sx={{ p: 2 }}>
+              <FormAuto
+                connectionLogs={connectionLogs}
+                setActiveTab={setActiveTab}
+                onFetchDatabases={handleOpenBackupConfig}
+                // Truyền thêm list DB để FormAuto hiển thị
+                dbList={dbList} 
+                isFetching={isFetchingDbs}
+              />
+            </Box>
+          )}
         </Box>
 
         {/* SỬA: Đưa nút Cloud vào cuối Cột Trái để giao diện cân đối */}
@@ -668,7 +687,7 @@ const handleFinalUpload = async () => {
                   variant="contained"
                   size="small"
                   disabled={backingUpId !== null}
-                  onClick={() => handleOpenBackupConfig(log)}
+                  onClick={() => handleOpenBackupConfig(log, true)}
                   sx={{ bgcolor: log.success ? "#7b1fa2" : "#b0bec5" }}
                 >
                   {backingUpId === log.id ? "..." : "BACKUP"}
@@ -694,7 +713,6 @@ const handleFinalUpload = async () => {
           {snackbar.message}
         </Alert>
       </Snackbar>
-
     </Box>
   );
 }
