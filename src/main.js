@@ -236,6 +236,7 @@ ipcMain.handle("check-database-info", async (event, dbConfig) => {
   }
 });
 
+
 ipcMain.handle("create-sql-backup", async (event, dbConfig) => {
  const handler = backupHandlers[dbConfig.dbType];
 
@@ -430,18 +431,15 @@ const createWindow = () => {
     width: 1100,
     height: 900,
     webPreferences: { 
-      // __dirname đã được định nghĩa chuẩn ở đầu file của bạn
       preload: path.join(__dirname, "preload.js"),
       disableBlinkFeatures: "AutomationControlled"
     },
   });
 
-  // Kiểm tra biến Vite an toàn để tránh ReferenceError
+  // 1. Kiểm tra và tải URL/File (Giữ nguyên logic của bạn)
   if (typeof MAIN_WINDOW_VITE_DEV_SERVER_URL !== "undefined" && MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     win.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
   } else {
-    // Nếu là bản build, load file index.html
-    // Lưu ý: path.join(__dirname, "../index.html") tùy thuộc vào cấu trúc thư mục out của bạn
     const indexPath = path.join(__dirname, "..", "renderer", "main_window", "index.html");
     if (fs.existsSync(indexPath)) {
       win.loadFile(indexPath);
@@ -449,6 +447,34 @@ const createWindow = () => {
       win.loadFile(path.join(__dirname, "../index.html"));
     }
   }
+
+
+  // 2. Ép hiển thị thanh cuộn VÀ loại trừ icon cụ thể
+  // main.js
+  // main.js
+  win.webContents.on('did-finish-load', () => {
+    win.webContents.executeJavaScript(`
+      document.querySelectorAll('*').forEach(el => {
+        // 1. CHỐT CHẶN: Tuyệt đối không can thiệp vào Input, Icon và các thành phần Form
+        const isInputArea = el.closest('.MuiFormControl-root') || 
+                            el.closest('.MuiInputBase-root') ||
+                            el.tagName === 'SVG' ||
+                            el.tagName === 'INPUT' ||
+                            el.classList.contains('MuiSvgIcon-root');
+
+        if (isInputArea) {
+          return; // Bỏ qua hoàn toàn khu vực nhập liệu và icon mắt
+        }
+
+        // 2. Chỉ kích hoạt cuộn cho các container chứa danh sách hoặc nội dung lớn
+        // scrollHeight > clientHeight + 5 để tránh hiện thanh cuộn thừa do sai số pixel
+        if (el.scrollHeight > el.clientHeight + 5) {
+          el.style.overflowY = 'auto'; // Dùng auto để MUI tự xử lý mượt hơn
+          el.style.display = 'block';
+        }
+      });
+    `).catch(err => console.error("Lỗi thực thi Scrolling Script:", err));
+  });
 };
 
 // CHỈ gọi createWindow khi app đã ready
