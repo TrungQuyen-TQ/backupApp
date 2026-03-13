@@ -86,8 +86,6 @@ function App() {
 
   const [isLoggedIn, setIsLoggedIn] = useState(true);
 
-
-
   // Quản lý trạng thái thông báo (Snackbar)
   const [snackbar, setSnackbar] = useState({
     open: false,
@@ -218,7 +216,7 @@ function App() {
   //     for (const email of targetEmails) {
   //       const driveResult = await window.electronAPI.uploadToDrive({
   //         files: filesToUpload,
-  //         targetEmail: email 
+  //         targetEmail: email
   //       });
 
   //       if (!driveResult.success) {
@@ -247,7 +245,7 @@ function App() {
       for (const email of targetEmails) {
         const driveResult = await window.electronAPI.uploadToDrive({
           files: filesToUpload,
-          targetEmail: email 
+          targetEmail: email,
         });
 
         if (!driveResult.success) {
@@ -259,11 +257,16 @@ function App() {
       // 2. CHỈ XÓA FILE SAU KHI TẤT CẢ EMAIL ĐÃ CHẠY XONG
       if (overallSuccess) {
         await window.electronAPI.deleteTempFiles(filesToUpload);
-        showMsg(`Hoàn tất đẩy file lên ${targetEmails.length} Drive và đã dọn dẹp file tạm.`, "success");
+        showMsg(
+          `Hoàn tất đẩy file lên ${targetEmails.length} Drive và đã dọn dẹp file tạm.`,
+          "success",
+        );
       } else {
-        showMsg("Quá trình hoàn tất nhưng có một số Drive bị lỗi. File tạm chưa được xóa để bạn có thể thử lại.", "warning");
+        showMsg(
+          "Quá trình hoàn tất nhưng có một số Drive bị lỗi. File tạm chưa được xóa để bạn có thể thử lại.",
+          "warning",
+        );
       }
-
     } catch (err) {
       showMsg("Lỗi hệ thống: " + err.message, "error");
     } finally {
@@ -276,8 +279,8 @@ function App() {
     setSelectedLogForBackup(log);
     setIsFetchingDbs(true);
     if (showModal) {
-    setShowInputDbModal(true);
-  }
+      setShowInputDbModal(true);
+    }
     setSelectedDbs([]);
     console.log("Log để backup:", log);
     try {
@@ -560,11 +563,46 @@ function App() {
         <TabsHeader activeTab={activeTab} setActiveTab={setActiveTab} />
         <Box sx={{ flex: 1, overflowY: "auto" }}>
           {activeTab === 0 && (
-            <ConnectionForm
-              formData={formData}
-              setFormData={setFormData}
-              onConnectSuccess={handleTestConnection}
-            />
+            <Box>
+              <ConnectionForm
+                formData={formData}
+                setFormData={setFormData}
+                onConnectSuccess={handleTestConnection}
+              />
+              <Box sx={{ p: 2, borderTop: "1px solid #eee", bgcolor: "#fff" }}>
+                <Button
+                  fullWidth
+                  onClick={handleOpenUploadPopup}
+                  variant="contained"
+                  startIcon={
+                    isUploading ? (
+                      <CircularProgress size={20} color="inherit" />
+                    ) : (
+                      <CloudIcon />
+                    )
+                  }
+                  disabled={isLoading || isUploading}
+                  sx={{ py: 1.5, position: "relative", overflow: "hidden" }}
+                >
+                  {isUploading
+                    ? `Đang tải lên (${uploadProgress}%)`
+                    : "Đẩy lên Google Drive"}
+                  {isUploading && (
+                    <LinearProgress
+                      variant="determinate"
+                      value={uploadProgress}
+                      sx={{
+                        position: "absolute",
+                        bottom: 10,
+                        left: 0,
+                        right: 0,
+                        height: 4,
+                      }}
+                    />
+                  )}
+                </Button>
+              </Box>
+            </Box>
           )}
 
           {activeTab === 1 && (
@@ -574,7 +612,7 @@ function App() {
                 setActiveTab={setActiveTab}
                 onFetchDatabases={handleOpenBackupConfig}
                 // Truyền thêm list DB để FormAuto hiển thị
-                dbList={dbList} 
+                dbList={dbList}
                 isFetching={isFetchingDbs}
               />
             </Box>
@@ -582,39 +620,6 @@ function App() {
         </Box>
 
         {/* SỬA: Đưa nút Cloud vào cuối Cột Trái để giao diện cân đối */}
-        <Box sx={{ p: 2, borderTop: "1px solid #eee", bgcolor: "#fff" }}>
-          <Button
-            fullWidth
-            onClick={handleOpenUploadPopup}
-            variant="contained"
-            startIcon={
-              isUploading ? (
-                <CircularProgress size={20} color="inherit" />
-              ) : (
-                <CloudIcon />
-              )
-            }
-            disabled={isLoading || isUploading}
-            sx={{ py: 1.5, position: "relative", overflow: "hidden" }}
-          >
-            {isUploading
-              ? `Đang tải lên (${uploadProgress}%)`
-              : "Đẩy lên Google Drive"}
-            {isUploading && (
-              <LinearProgress
-                variant="determinate"
-                value={uploadProgress}
-                sx={{
-                  position: "absolute",
-                  bottom: 10,
-                  left: 0,
-                  right: 0,
-                  height: 4,
-                }}
-              />
-            )}
-          </Button>
-        </Box>
       </Paper>
 
       {/* CỘT PHẢI */}
