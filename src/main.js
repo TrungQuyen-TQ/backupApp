@@ -453,7 +453,7 @@ const VITE_WINDOW_NAME =
 const createWindow = () => {
   const win = new BrowserWindow({
     width: 1100,
-    height: 900,
+    height: 1500,
     webPreferences: {
       // __dirname đã được định nghĩa chuẩn ở đầu file của bạn
       preload: path.join(__dirname, "preload.js"),
