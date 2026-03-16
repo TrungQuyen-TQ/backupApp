@@ -236,7 +236,15 @@ const UploadPopup = ({ open, onClose, onUpload, showMsg }) => {
         </FormControl>
 
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', width: '100%', gap: 1 }}>
-          <Button onClick={onClose} color="inherit">Hủy</Button>
+          <Button onClick={onClose} sx={{ 
+              bgcolor: '#d32f2f', // Màu đỏ (tương đương color error của MUI)
+              color: '#fff',      // Chữ trắng
+              '&:hover': {
+                bgcolor: '#b71c1c', // Màu đỏ đậm hơn khi di chuột vào
+              },
+              px: 3 // Thêm chút padding cho đẹp cân đối với nút bên cạnh
+            }}>Hủy
+          </Button>
           <Button 
             onClick={handleUploadClick}
             disabled={selectedFiles.length === 0 || targetEmails.length === 0}

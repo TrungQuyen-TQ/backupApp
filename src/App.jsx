@@ -22,6 +22,7 @@ import {
   LinearProgress, // SỬA: Thêm LinearProgress
   Snackbar,
   Alert,
+  InputAdornment, // <--- THÊM DÒNG NÀY VÀO ĐÂY
 } from "@mui/material";
 import CloudIcon from "@mui/icons-material/Cloud";
 import BackupIcon from "@mui/icons-material/Backup";
@@ -52,6 +53,8 @@ function getStyles(name, selectedNames, theme) {
   };
 }
 
+
+
 function App() {
   const theme = useTheme();
   const [activeTab, setActiveTab] = useState(0);
@@ -78,8 +81,7 @@ function App() {
   const [dbList, setDbList] = useState([]);
   const [selectedDbs, setSelectedDbs] = useState([]);
   const [isFetchingDbs, setIsFetchingDbs] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [isUploading, setIsUploading] = useState(false);
+  
   const [showUploadPopup, setShowUploadPopup] = useState(false);
 
   const [isLoggedIn, setIsLoggedIn] = useState(true);
@@ -90,6 +92,41 @@ function App() {
     message: "",
     severity: "success", // success, error, warning, info
   });
+
+
+  // --- Quản lý trạng thái Upload (Chỉ giữ 1 bộ duy nhất) ---
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadSpeed, setUploadSpeed] = useState(""); 
+  const [isUploading, setIsUploading] = useState(false);
+
+  useEffect(() => {
+  // Biến để giữ hàm tháo gỡ (unsubscribe)
+  let unsubscribe;
+
+  if (window.electronAPI?.onUploadProgress) {
+    // Gọi hàm và lưu kết quả (trong preload.js hàm này trả về một function)
+    const result = window.electronAPI.onUploadProgress((data) => {
+      if (data && typeof data === 'object') {
+        setUploadProgress(data.progress || 0);
+        setUploadSpeed(data.speed || "0 MB/s");
+      } else {
+        setUploadProgress(data);
+      }
+    });
+
+    // Chỉ gán nếu kết quả trả về thực sự là một hàm
+    if (typeof result === 'function') {
+      unsubscribe = result;
+    }
+  }
+
+  // TRẢ VỀ: Một hàm ẩn danh để React gọi khi unmount
+  return () => {
+    if (typeof unsubscribe === 'function') {
+      unsubscribe();
+    }
+  };
+}, []);
 
   // Hàm xử lý khi nhấn nút "Đẩy lên Google Drive" gốc
   const handleOpenDriveSelection = () => {
@@ -106,13 +143,6 @@ function App() {
   };
 
   // SỬA: Đảm bảo window.electronAPI tồn tại trước khi đăng ký event
-  useEffect(() => {
-    if (window.electronAPI?.onUploadProgress) {
-      window.electronAPI.onUploadProgress((progress) => {
-        setUploadProgress(progress);
-      });
-    }
-  }, []);
 
   const showMsg = (msg, type = "success") => {
     setSnackbar({ open: true, message: msg, severity: type });
@@ -203,31 +233,6 @@ function App() {
   };
 
   // 6. Xử lý Upload nhiều file sau khi chọn từ Popup
-  // const handleUploadFiles = async (filesToUpload, targetEmails) => {
-  //   setIsLoading(true);
-  //   setIsUploading(true);
-  //   setShowUploadPopup(false);
-
-  //   try {
-  //     // Duyệt qua từng email để upload
-  //     for (const email of targetEmails) {
-  //       const driveResult = await window.electronAPI.uploadToDrive({
-  //         files: filesToUpload,
-  //         targetEmail: email
-  //       });
-
-  //       if (!driveResult.success) {
-  //         showMsg(`Lỗi khi tải lên ${email}: ${driveResult.error}`, "error");
-  //       }
-  //     }
-  //     showMsg(`Hoàn tất đẩy file lên ${targetEmails.length} Drive.`, "success");
-  //   } catch (err) {
-  //     showMsg("Lỗi hệ thống: " + err.message, "error");
-  //   } finally {
-  //     setIsLoading(false);
-  //     setIsUploading(false);
-  //   }
-  // };
 
   // App.jsx
   const handleUploadFiles = async (filesToUpload, targetEmails) => {
@@ -437,8 +442,16 @@ function App() {
           <Box sx={{ mt: 4, display: "flex", gap: 1 }}>
             <Button
               fullWidth
-              variant="outlined"
+              //variant="outlined"
               onClick={() => setShowInputDbModal(false)}
+              sx={{ 
+              bgcolor: '#d32f2f', // Màu đỏ (tương đương color error của MUI)
+              color: '#fff',      // Chữ trắng
+              '&:hover': {
+                bgcolor: '#b71c1c', // Màu đỏ đậm hơn khi di chuột vào
+              },
+              px: 3 // Thêm chút padding cho đẹp cân đối với nút bên cạnh
+            }}
             >
               HỦY
             </Button>
@@ -559,30 +572,25 @@ function App() {
                 onConnectSuccess={handleTestConnection}
               />
               <Box sx={{ p: 2, borderTop: "1px solid #eee", bgcolor: "#fff" }}>
+                {/* Nút bấm đẩy lên Drive */}
                 <Button
                   fullWidth
                   onClick={handleOpenUploadPopup}
                   variant="contained"
                   startIcon={
-                    isUploading ? (
-                      <CircularProgress size={20} color="inherit" />
-                    ) : (
-                      <CloudIcon />
-                    )
+                    isUploading ? <CircularProgress size={20} color="inherit" /> : <CloudIcon />
                   }
                   disabled={isLoading || isUploading}
-                  sx={{ py: 1.5, position: "relative", overflow: "hidden" }}
+                  sx={{ py: 1.5, position: "relative", overflow: "hidden", mb: 2 }}
                 >
-                  {isUploading
-                    ? `Đang tải lên (${uploadProgress}%)`
-                    : "Đẩy lên Google Drive"}
+                  {isUploading ? `Đang tải lên (${uploadProgress}%)` : "Đẩy lên Google Drive"}
                   {isUploading && (
                     <LinearProgress
                       variant="determinate"
                       value={uploadProgress}
                       sx={{
                         position: "absolute",
-                        bottom: 10,
+                        bottom: 0,
                         left: 0,
                         right: 0,
                         height: 4,
@@ -590,7 +598,69 @@ function App() {
                     />
                   )}
                 </Button>
+
+                {/* Ô Input động hiển thị tốc độ - Luôn hiển thị */}
+                <TextField
+                  fullWidth
+                  label="Giám sát đường truyền"
+                  size="small"
+                  variant="outlined"
+                  value={isUploading ? uploadSpeed : "Hệ thống sẵn sàng"}
+                  // SỬA: Dùng InputProps để tùy chỉnh sâu CSS
+                  InputProps={{
+                    readOnly: true,
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <CloudIcon 
+                          sx={{ 
+                            color: isUploading ? "#1976d2" : "#b0bec5",
+                            // Hiệu ứng nhấp nháy khi đang upload
+                            animation: isUploading ? "pulse 1.5s infinite" : "none",
+                            "@keyframes pulse": {
+                              "0%": { opacity: 1 },
+                              "50%": { opacity: 0.4 },
+                              "100%": { opacity: 1 },
+                            }
+                          }} 
+                        />
+                      </InputAdornment>
+                    ),
+                    sx: { 
+                      fontFamily: "'JetBrains Mono', 'Roboto Mono', monospace", 
+                      bgcolor: isUploading ? "#f0f7ff" : "#fafafa", // Đổi màu nền khi chạy
+                      fontWeight: "bold",
+                      fontSize: "0.9rem",
+                      color: isUploading ? "#1976d2" : "#607d8b",
+                      transition: "all 0.3s ease", // Hiệu ứng chuyển màu mượt mà
+                      "& fieldset": {
+                        borderColor: isUploading ? "#1976d2 !important" : "#e0e0e0",
+                        borderWidth: isUploading ? "2px" : "1px",
+                      },
+                      "&:hover fieldset": {
+                        borderColor: "#1976d2",
+                      },
+                      // Đổ bóng nhẹ cho ô input
+                      boxShadow: isUploading ? "0 0 8px rgba(25, 118, 210, 0.2)" : "none",
+                    }
+                  }}
+                  // Tùy chỉnh dòng chữ bên dưới
+                  helperText={
+                    <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, fontWeight: 500 }}>
+                      {isUploading ? (
+                        <>
+                          <CircularProgress size={10} thickness={6} /> 
+                          <span style={{ color: '#1976d2' }}>Uploading files to Google Drive...</span>
+                        </>
+                      ) : (
+                        "Trạng thái: Nhàn rỗi"
+                      )}
+                    </Box>
+                  }
+                  sx={{ mt: 1 }}
+                />
               </Box>
+
+              
             </Box>
           )}
 

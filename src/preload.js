@@ -17,14 +17,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   uploadToDrive: (data) => ipcRenderer.invoke("upload-to-drive", data),
   onUploadProgress: (callback) => {
-    const subscription = (_event, data) => callback(data);
-    ipcRenderer.on("upload-progress", subscription);
-
-    // TRẢ VỀ một hàm để cleanup
-    return () => {
-      ipcRenderer.removeListener("upload-progress", subscription);
-    };
-  },
+  const subscription = (_event, data) => callback(data);
+  ipcRenderer.on("upload-progress", subscription);
+  
+  // Trả về một hàm CHƯA CHẠY để React gọi khi cần cleanup
+  return () => {
+    ipcRenderer.removeListener("upload-progress", subscription);
+  };
+},
 
   onFileDone: (callback) => {
     const subscription = (_event, data) => callback(data);

@@ -40,16 +40,21 @@ export async function backupMongoDB(dbConfig) {
     fs.mkdirSync(tempDirOnWindows, { recursive: true });
   }
 
-  const timestamp = Date.now();
-  // MongoDB dump thường tạo ra thư mục hoặc file nén .gz
-  const dumpFileName = `${dbConfig.database}_${timestamp}.gz`;
-  const zipFileName = `${dbConfig.database}_${timestamp}.zip`;
+  const now = new Date();
+  const formattedTime = now.getFullYear() + 
+                  String(now.getMonth() + 1).padStart(2, '0') + 
+                  String(now.getDate()).padStart(2, '0') + "_" + 
+                  String(now.getHours()).padStart(2, '0') + 
+                  String(now.getMinutes()).padStart(2, '0');
 
-  const filePathOnWindows = path.join(tempDirOnWindows, dumpFileName);
-  const zipPathOnWindows = path.join(tempDirOnWindows, zipFileName);
+  const finalZipName = `MONGODB_${dbConfig.database}_${formattedTime}.zip`; // Tên file ZIP cuối cùng
+  const rawDumpName = `${dbConfig.database}_${Date.now()}.gz`; // Tên file tạm trung gian
+
+  const filePathOnWindows = path.join(tempDirOnWindows, rawDumpName);
+  const zipPathOnWindows = path.join(tempDirOnWindows, finalZipName);
 
   // Đường dẫn tạm trên Ubuntu (thư mục /tmp có quyền ghi cao)
-  const filePathOnUbuntu = `/tmp/${dumpFileName}`;
+  const filePathOnUbuntu = `/tmp/${rawDumpName}`;
   const passwordPath = path.join(process.cwd(), "configs", "passwordzip.json");
 
   // 2. Đọc mật khẩu Zip
@@ -116,7 +121,7 @@ export async function backupMongoDB(dbConfig) {
       archive.on("error", reject);
 
       archive.pipe(output);
-      archive.file(filePathOnWindows, { name: dumpFileName });
+      archive.file(filePathOnWindows, { name: rawDumpName });
       archive.finalize();
     });
 
@@ -128,7 +133,7 @@ export async function backupMongoDB(dbConfig) {
     return {
       success: true,
       filePath: zipPathOnWindows,
-      fileName: zipFileName,
+      fileName: finalZipName,
       dbName: dbConfig.database,
       stats: {
         rowCounts: stats.rowCounts,
