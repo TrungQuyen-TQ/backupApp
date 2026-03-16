@@ -289,7 +289,6 @@ ipcMain.handle("get-temp-files", async (event) => {
 
 ipcMain.handle("upload-to-drive", async (event, { files, targetEmail }) => {
   try {
-    // Kiểm tra log ở Terminal (màn hình đen) để chắc chắn email đã xuống tới đây
     console.log("Đang bắt đầu upload cho email:", targetEmail);
 
     const auth = await getAuthenticatedClient(targetEmail);
@@ -313,6 +312,12 @@ ipcMain.handle("upload-to-drive", async (event, { files, targetEmail }) => {
             })
           ).data.id;
 
+    // --- PHẦN SỬA ĐỂ TÍNH % CHÍNH XÁC ---
+    // Tính tổng dung lượng của tất cả các file trong danh sách upload
+    const totalBatchSize = files.reduce((acc, f) => acc + fs.statSync(f.path).size, 0);
+    // Biến lưu trữ tổng dung lượng của những file đã upload xong trước đó
+    let totalUploadedBeforeCurrentFile = 0; 
+    
     const uploadResults = [];
 
     // 2. Vòng lặp upload từng file
@@ -320,7 +325,8 @@ ipcMain.handle("upload-to-drive", async (event, { files, targetEmail }) => {
       try {
         const driveFileName = fileObj.name.replace(/\//g, " - ");
         const fileSize = fs.statSync(fileObj.path).size;
-        let uploadedBytes = 0;
+        
+        let lastBytesRead = 0; // Số byte đã đọc của file hiện tại trong lần update trước
         let lastTime = Date.now();
 
         // THỰC HIỆN UPLOAD
@@ -328,46 +334,45 @@ ipcMain.handle("upload-to-drive", async (event, { files, targetEmail }) => {
           {
             requestBody: { name: driveFileName, parents: [folderId] },
             media: { body: fs.createReadStream(fileObj.path) },
-            fields: "id", // Yêu cầu trả về ID để xác nhận thành công
+            fields: "id",
           },
           {
             onUploadProgress: (evt) => {
               const currentTime = Date.now();
               const duration = (currentTime - lastTime) / 1000;
+              
               if (duration > 0.5) {
-                const bytesSinceLast = evt.bytesRead - uploadedBytes;
-                const speed = bytesSinceLast / duration / (1024 * 1024);
+                // Tốc độ: Tính dựa trên lượng data thực tế truyền đi của file hiện tại
+                const bytesSinceLast = evt.bytesRead - lastBytesRead;
+                const speedMBps = bytesSinceLast / duration / (1024 * 1024);
 
-                // main.js
+                // TIẾN TRÌNH TỔNG (%): (Data các file cũ + Data file hiện tại) / Tổng toàn bộ
+                const overallUploaded = totalUploadedBeforeCurrentFile + evt.bytesRead;
+                const overallProgress = Math.round((overallUploaded / totalBatchSize) * 100);
+
                 event.sender.send("upload-progress", {
                   fileName: fileObj.name,
-                  progress: Math.round((evt.bytesRead / fileSize) * 100),
-                  speed: speed.toFixed(2) + " MB/s", // <-- Đây là con số bạn đang thiếu
+                  progress: overallProgress > 100 ? 100 : overallProgress,
+                  speed: speedMBps.toFixed(2) + " MB/s",
                 });
 
-                uploadedBytes = evt.bytesRead;
+                lastBytesRead = evt.bytesRead;
                 lastTime = currentTime;
               }
             },
           },
         );
 
-        // Log ra terminal để bạn debug: Nếu có ID nghĩa là file đã thực sự nằm trên Drive
-        console.log(
-          `✅ File [${driveFileName}] đã lên Drive. ID: ${res.data.id}`,
-        );
+        console.log(`✅ File [${driveFileName}] đã lên Drive. ID: ${res.data.id}`);
 
-        // 3. Xóa file local sau khi upload thành công
-        /*
-        if (fs.existsSync(fileObj.path)) {
-          fs.unlinkSync(fileObj.path); 
-        }
-        */
+        // Cộng dồn dung lượng file vừa hoàn thành để tính tiếp cho file sau
+        totalUploadedBeforeCurrentFile += fileSize;
 
         event.sender.send("file-done", {
           fileName: fileObj.name,
           status: "OK",
         });
+        
         uploadResults.push({
           name: fileObj.name,
           success: true,
@@ -375,6 +380,9 @@ ipcMain.handle("upload-to-drive", async (event, { files, targetEmail }) => {
         });
       } catch (uploadError) {
         console.error(`❌ Lỗi upload file ${fileObj.name}:`, uploadError);
+        // Nếu lỗi, vẫn phải cộng dung lượng file lỗi vào để tiến trình chung không bị lệch
+        totalUploadedBeforeCurrentFile += fs.statSync(fileObj.path).size;
+        
         event.sender.send("file-done", {
           fileName: fileObj.name,
           status: "Lỗi",

@@ -236,6 +236,8 @@ function App() {
 
   // App.jsx
   const handleUploadFiles = async (filesToUpload, targetEmails) => {
+    setUploadProgress(0); // <--- Reset % về 0 cho đợt mới
+    setUploadSpeed("Đang khởi tạo..."); // Thông báo bắt đầu đợt mới
     setIsLoading(true);
     setIsUploading(true);
     setShowUploadPopup(false);
