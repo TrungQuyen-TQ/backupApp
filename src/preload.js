@@ -41,9 +41,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Thêm vào preload.js
   getDatabasesList: (config) =>
     ipcRenderer.invoke("get-databases-list", config),
-  // Thêm vào preload.js
-  onUploadProgress: (callback) =>
-    ipcRenderer.on("upload-progress", (event, value) => callback(value)),
+
   getDriveAccounts: () => ipcRenderer.invoke("get-drive-accounts"),
   deleteTempFiles: (files) => ipcRenderer.invoke("delete-temp-files", files),
   // Thêm dòng này
