@@ -11,7 +11,6 @@ import {
   Divider,
   Stack,
   Paper,
-  
 } from "@mui/material";
 import CheckBoxOutlineBlankIcon from "@mui/icons-material/CheckBoxOutlineBlank";
 import CheckBoxIcon from "@mui/icons-material/CheckBox";
@@ -19,7 +18,6 @@ import StorageIcon from "@mui/icons-material/Storage";
 import ScheduleIcon from "@mui/icons-material/Schedule";
 import AddIcon from "@mui/icons-material/Add";
 import IconButton from "@mui/material/IconButton";
-
 
 const icon = <CheckBoxOutlineBlankIcon fontSize="small" />;
 const checkedIcon = <CheckBoxIcon fontSize="small" />;
@@ -71,15 +69,15 @@ export const FormAuto = ({
   const [activeTasks, setActiveTasks] = useState([]);
 
   const refreshActiveTasks = async () => {
-  const res = await window.electronAPI.getAutoConfigs(); // Bạn cần thêm hàm này ở preload/main
-  if (res.success) {
-    setActiveTasks(res.configs);
-  }
-};
+    const res = await window.electronAPI.getAutoConfigs(); // Bạn cần thêm hàm này ở preload/main
+    if (res.success) {
+      setActiveTasks(res.configs);
+    }
+  };
 
-useEffect(() => {
-  refreshActiveTasks(); // Chạy khi tab Auto được mở
-}, []);
+  useEffect(() => {
+    refreshActiveTasks(); // Chạy khi tab Auto được mở
+  }, []);
 
   // 2. Fetch danh sách email khi component mount
   useEffect(() => {
@@ -111,11 +109,11 @@ useEffect(() => {
     };
     const res = await window.electronAPI.saveAutoBackup(finalConfig);
     if (res.success) {
-    alert("Kích hoạt chu trình backup thành công!");
-    refreshActiveTasks(); // <--- Cập nhật lại danh sách hiển thị
-    // Reset form nếu muốn
-    setSelectedDBs([]);
-  }
+      alert("Kích hoạt chu trình backup thành công!");
+      refreshActiveTasks(); // <--- Cập nhật lại danh sách hiển thị
+      // Reset form nếu muốn
+      setSelectedDBs([]);
+    }
   };
 
   const handleStopTask = async (taskId) => {
@@ -128,15 +126,19 @@ useEffect(() => {
   };
 
   const handleStopAllTasks = async () => {
-  if (window.confirm("Bạn có chắc chắn muốn dừng tất cả lịch trình backup hiện có?")) {
-    // Gọi xuống Electron để stop cron jobs
-    const res = await window.electronAPI.stopAllBackups(); 
-    if (res.success) {
-      setActiveTasks([]); // Xóa trắng danh sách trên giao diện
-      alert("Đã dừng tất cả chu trình!");
+    if (
+      window.confirm(
+        "Bạn có chắc chắn muốn dừng tất cả lịch trình backup hiện có?",
+      )
+    ) {
+      // Gọi xuống Electron để stop cron jobs
+      const res = await window.electronAPI.stopAllBackups();
+      if (res.success) {
+        setActiveTasks([]); // Xóa trắng danh sách trên giao diện
+        alert("Đã dừng tất cả chu trình!");
+      }
     }
-  }
-};
+  };
 
   return (
     <Box sx={{ p: 3, maxWidth: 600, mx: "auto" }}>
@@ -241,7 +243,12 @@ useEffect(() => {
             <Typography
               variant="subtitle1"
               gutterBottom
-              sx={{ display: "flex", alignItems: "center", gap: 1, fontWeight: "bold" }}
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 1,
+                fontWeight: "bold",
+              }}
             >
               <ScheduleIcon /> Cấu hình lịch trình
             </Typography>
@@ -254,7 +261,9 @@ useEffect(() => {
                   size="small"
                   sx={{ width: 120 }}
                   value={schedule.interval}
-                  onChange={(e) => setSchedule({ ...schedule, interval: e.target.value })}
+                  onChange={(e) =>
+                    setSchedule({ ...schedule, interval: e.target.value })
+                  }
                 />
 
                 <TextField
@@ -263,7 +272,9 @@ useEffect(() => {
                   size="small"
                   sx={{ width: 120 }}
                   value={schedule.type}
-                  onChange={(e) => setSchedule({ ...schedule, type: e.target.value })}
+                  onChange={(e) =>
+                    setSchedule({ ...schedule, type: e.target.value })
+                  }
                   SelectProps={{ native: true }}
                 >
                   <option value="minute">Phút (Để Test)</option>
@@ -278,7 +289,9 @@ useEffect(() => {
                     size="small"
                     sx={{ width: 150 }}
                     value={schedule.time}
-                    onChange={(e) => setSchedule({ ...schedule, time: e.target.value })}
+                    onChange={(e) =>
+                      setSchedule({ ...schedule, time: e.target.value })
+                    }
                     InputLabelProps={{ shrink: true }}
                   />
                 )}
@@ -287,7 +300,7 @@ useEffect(() => {
               <Typography variant="caption" color="text.secondary">
                 {schedule.type === "day"
                   ? `Hệ thống sẽ backup ${schedule.interval} ngày một lần, vào lúc ${schedule.time}.`
-                  : `Hệ thống sẽ tự động backup cứ sau mỗi ${schedule.interval} ${schedule.type === 'minute' ? 'phút' : 'giờ'}.`}
+                  : `Hệ thống sẽ tự động backup cứ sau mỗi ${schedule.interval} ${schedule.type === "minute" ? "phút" : "giờ"}.`}
               </Typography>
             </Stack>
           </Box>
@@ -309,7 +322,11 @@ useEffect(() => {
               size="large"
               fullWidth
               onClick={handleSaveConfig}
-              disabled={!selectedServer || selectedDBs.length === 0 || selectedEmails.length === 0}
+              disabled={
+                !selectedServer ||
+                selectedDBs.length === 0 ||
+                selectedEmails.length === 0
+              }
               sx={{ bgcolor: "#1976d2", "&:hover": { bgcolor: "#1565c0" } }}
             >
               Lưu & Kích hoạt
@@ -319,13 +336,21 @@ useEffect(() => {
           {/* TRỰC QUAN HÓA CHU TRÌNH */}
           {activeTasks.length > 0 && (
             <Box sx={{ mt: 4, p: 2, bgcolor: "#f5f5f5", borderRadius: 2 }}>
-              <Typography variant="h6" gutterBottom sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <Typography
+                variant="h6"
+                gutterBottom
+                sx={{ display: "flex", alignItems: "center", gap: 1 }}
+              >
                 <ScheduleIcon color="primary" /> Các chu trình đang hoạt động
               </Typography>
               <Divider sx={{ mb: 2 }} />
               <Stack spacing={2}>
                 {activeTasks.map((task) => (
-                  <Paper key={task.id} elevation={1} sx={{ p: 2, borderLeft: "4px solid #4caf50" }}>
+                  <Paper
+                    key={task.id}
+                    elevation={1}
+                    sx={{ p: 2, borderLeft: "4px solid #4caf50" }}
+                  >
                     <Typography variant="subtitle2" color="primary">
                       🌐 Server: {task.server?.server} ({task.server?.dbType})
                     </Typography>
@@ -333,7 +358,34 @@ useEffect(() => {
                       🗄️ Databases: <b>{task.databases.join(", ")}</b>
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      ⏱️ Tần suất: {task.schedule.interval} {task.schedule.type === 'minute' ? 'phút' : 'giờ'}/lần
+                      ⏱️ Tần suất: {task.schedule.interval}{" "}
+                      {task.schedule.type === "minute" ? "phút" : "giờ"}/lần
+                    </Typography>
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        alignItems: "center",
+                        gap: 0.5,
+                      }}
+                    >
+                      📧 Emails:{" "}
+                      {task.targetEmails && task.targetEmails.length > 0
+                        ? task.targetEmails.map((item, index) => (
+                            <span
+                              key={index}
+                              style={{
+                                backgroundColor: "#f0f0f0",
+                                padding: "2px 8px",
+                                borderRadius: "4px",
+                                fontSize: "0.75rem",
+                              }}
+                            >
+                              {item.label}: <b>{item.email}</b>
+                            </span>
+                          ))
+                        : "Chưa cấu hình"}
                     </Typography>
                   </Paper>
                 ))}
