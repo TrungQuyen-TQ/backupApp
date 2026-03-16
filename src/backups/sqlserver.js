@@ -5,6 +5,7 @@ import SftpClient from "ssh2-sftp-client";
 import archiver from "archiver";
 import registerFormat from "archiver-zip-encryptable";
 
+
 /**
  * Hàm lấy thống kê dữ liệu thực tế từ DB
  */
@@ -44,13 +45,24 @@ export async function backupSQLServer(dbConfig) {
     fs.mkdirSync(tempDirOnWindows, { recursive: true });
   }
 
-  const timestamp = Date.now();
-  const bakFileName = `${dbConfig.database}_${timestamp}.bak`;
-  const zipFileName = `${dbConfig.database}_${timestamp}.zip`;
+  // const timestamp = Date.now();
+  // const bakFileName = `${dbConfig.database}_${timestamp}.bak`;
+  // const zipFileName = `${dbConfig.database}_${timestamp}.zip`;
+
+  // Thêm đoạn này vào ngay sau dòng console.log("Starting backup...")
+const now = new Date();
+const formattedTime = now.getFullYear() + 
+                String(now.getMonth() + 1).padStart(2, '0') + 
+                String(now.getDate()).padStart(2, '0') + "_" + 
+                String(now.getHours()).padStart(2, '0') + 
+                String(now.getMinutes()).padStart(2, '0');
+
+const finalZipName = `SQLSERVER_${dbConfig.database}_${formattedTime}.zip`; // Tên file ZIP cuối cùng
+const rawBakName = `${dbConfig.database}_${Date.now()}.bak`; // Tên file tạm (giữ nguyên Date.now để tránh trùng)
   
-  const filePathOnWindows = path.join(tempDirOnWindows, bakFileName);
-  const zipPathOnWindows = path.join(tempDirOnWindows, zipFileName);
-  const filePathOnUbuntu = `/var/opt/mssql/data/${bakFileName}`;
+  const filePathOnWindows = path.join(tempDirOnWindows, rawBakName);
+  const zipPathOnWindows = path.join(tempDirOnWindows, finalZipName);
+  const filePathOnUbuntu = `/var/opt/mssql/data/${rawBakName}`;
   const passwordPath = path.join(process.cwd(), "configs", "passwordzip.json");
 
   // 2. Đọc mật khẩu Zip từ file config
@@ -117,7 +129,7 @@ export async function backupSQLServer(dbConfig) {
       archive.on('error', reject);
 
       archive.pipe(output);
-      archive.file(filePathOnWindows, { name: bakFileName });
+      archive.file(filePathOnWindows, { name: rawBakName });
       archive.finalize();
     });
 
@@ -129,7 +141,7 @@ export async function backupSQLServer(dbConfig) {
     return {
       success: true,
       filePath: zipPathOnWindows,
-      fileName: zipFileName,
+      fileName: finalZipName,
       dbName: dbConfig.database,
       stats: {
         rowCounts: stats.rowCounts,
