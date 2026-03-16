@@ -190,6 +190,7 @@ useEffect(() => {
                   border: "1px solid",
                   borderColor: "primary.main",
                   borderRadius: 1,
+                  padding: "15px",
                 }}
                 title="Thêm kết nối mới"
               >
@@ -242,7 +243,7 @@ useEffect(() => {
               gutterBottom
               sx={{ display: "flex", alignItems: "center", gap: 1, fontWeight: "bold" }}
             >
-              <ScheduleIcon /> 3. Cấu hình lịch trình
+              <ScheduleIcon /> Cấu hình lịch trình
             </Typography>
 
             <Stack spacing={2}>
