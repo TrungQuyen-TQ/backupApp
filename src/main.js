@@ -338,10 +338,11 @@ ipcMain.handle("upload-to-drive", async (event, { files, targetEmail }) => {
                 const bytesSinceLast = evt.bytesRead - uploadedBytes;
                 const speed = bytesSinceLast / duration / (1024 * 1024);
 
+                // main.js
                 event.sender.send("upload-progress", {
                   fileName: fileObj.name,
                   progress: Math.round((evt.bytesRead / fileSize) * 100),
-                  speed: speed.toFixed(2) + " MB/s",
+                  speed: speed.toFixed(2) + " MB/s", // <-- Đây là con số bạn đang thiếu
                 });
 
                 uploadedBytes = evt.bytesRead;
@@ -474,6 +475,35 @@ const createWindow = () => {
       win.loadFile(path.join(__dirname, "../index.html"));
     }
   }
+
+   // 2. Ép hiển thị thanh cuộn VÀ loại trừ icon cụ thể
+  // main.js
+  // main.js
+  win.webContents.on('did-finish-load', () => {
+    win.webContents.executeJavaScript(`
+      document.querySelectorAll('*').forEach(el => {
+        // 1. CHỐT CHẶN: Tuyệt đối không can thiệp vào Input, Icon và các thành phần Form
+        const isInputArea = el.closest('.MuiFormControl-root') || 
+                            el.closest('.MuiInputBase-root') ||
+                            el.tagName === 'SVG' ||
+                            el.tagName === 'INPUT' ||
+                            el.classList.contains('MuiSvgIcon-root');
+
+        if (isInputArea) {
+          return; // Bỏ qua hoàn toàn khu vực nhập liệu và icon mắt
+        }
+
+        // 2. Chỉ kích hoạt cuộn cho các container chứa danh sách hoặc nội dung lớn
+        // scrollHeight > clientHeight + 5 để tránh hiện thanh cuộn thừa do sai số pixel
+        if (el.scrollHeight > el.clientHeight + 5) {
+          el.style.overflowY = 'auto'; // Dùng auto để MUI tự xử lý mượt hơn
+          el.style.display = 'block';
+        }
+      });
+    `).catch(err => console.error("Lỗi thực thi Scrolling Script:", err));
+  });
+
+
 };
 
 async function uploadFilesInternal(files, targetEmail) {
