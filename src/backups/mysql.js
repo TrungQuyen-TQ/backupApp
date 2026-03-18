@@ -5,18 +5,13 @@ import SftpClient from "ssh2-sftp-client";
 import archiver from "archiver";
 import registerFormat from "archiver-zip-encryptable";
 
-// Đăng ký định dạng nén có mật khẩu
-
 /**
  * Hàm lấy thống kê dữ liệu thực tế từ MySQL
- * Sử dụng information_schema để lấy số dòng nhanh (xấp xỉ) hoặc COUNT(*) để chính xác
  */
 async function getDatabaseStats(connection, dbName) {
-  // 1. Lấy phiên bản MySQL
   const [versionRows] = await connection.query("SELECT VERSION() as version");
   const shortVersion = versionRows[0].version;
 
-  // 2. Lấy danh sách bảng và số dòng (Sử dụng information_schema để tối ưu hiệu năng)
   const [tables] = await connection.query(`
     SELECT TABLE_NAME, TABLE_ROWS 
     FROM INFORMATION_SCHEMA.TABLES 
@@ -25,8 +20,6 @@ async function getDatabaseStats(connection, dbName) {
 
   let rowCounts = {};
   for (const row of tables) {
-    // Lưu ý: TABLE_ROWS trong information_schema có thể là con số xấp xỉ với InnoDB.
-    // Nếu cần chính xác 100%, dùng: SELECT COUNT(*) FROM table_name
     rowCounts[row.TABLE_NAME] = row.TABLE_ROWS || 0;
   }
 
@@ -36,7 +29,11 @@ async function getDatabaseStats(connection, dbName) {
 /**
  * Logic chính xử lý Backup MySQL
  */
-export async function backupMySQL(dbConfig) {
+export async function backupMySQL(dbConfig, event) {
+  const sendProgress = (msg, percent) => {
+    if (event) event.sender.send("backup-progress", { message: msg, progress: percent });
+  };
+
   console.log("Starting MySQL backup with config:", dbConfig.database);
 
   // 1. Khởi tạo đường dẫn
@@ -45,8 +42,6 @@ export async function backupMySQL(dbConfig) {
     fs.mkdirSync(tempDirOnWindows, { recursive: true });
   }
 
-
-  // THÊM: Logic tạo timestamp YYYYMMDD_HHmm
   const now = new Date();
   const formattedTime = now.getFullYear() + 
                   String(now.getMonth() + 1).padStart(2, '0') + 
@@ -54,16 +49,11 @@ export async function backupMySQL(dbConfig) {
                   String(now.getHours()).padStart(2, '0') + 
                   String(now.getMinutes()).padStart(2, '0');
 
-  const finalZipName = `MYSQL_${dbConfig.database}_${formattedTime}.zip`; // Tên file ZIP đích
-  const rawSqlName = `${dbConfig.database}_${Date.now()}.sql`; // Tên file .sql tạm thời
-  // const timestamp = Date.now();
-  // const sqlFileName = `${dbConfig.database}_${timestamp}.sql`;
-  // const zipFileName = `${dbConfig.database}_${timestamp}.zip`;
+  const finalZipName = `MYSQL_${dbConfig.database}_${formattedTime}.zip`;
+  const rawSqlName = `${dbConfig.database}_${Date.now()}.sql`;
   
   const filePathOnWindows = path.join(tempDirOnWindows, rawSqlName);
   const zipPathOnWindows = path.join(tempDirOnWindows, finalZipName);
-  
-  // Đường dẫn tạm trên Ubuntu (thường dùng /tmp để tránh lỗi quyền ghi)
   const filePathOnUbuntu = `/tmp/${rawSqlName}`;
   const passwordPath = path.join(process.cwd(), "configs", "passwordzip.json");
 
@@ -84,6 +74,7 @@ export async function backupMySQL(dbConfig) {
 
   try {
     // 3. Kết nối MySQL để lấy Stats
+    sendProgress("Đang kết nối MySQL...", 10);
     connection = await mysql.createConnection({
       host: dbConfig.server,
       user: dbConfig.dbUser,
@@ -92,11 +83,12 @@ export async function backupMySQL(dbConfig) {
       port: Number(dbConfig.port) || 3306,
     });
 
+    sendProgress("Đang lấy thống kê bảng dữ liệu...", 25);
     const stats = await getDatabaseStats(connection, dbConfig.database);
     await connection.end();
 
-    // 4. Chạy lệnh mysqldump thông qua SSH
-    // Với MySQL, chúng ta thực hiện dump trực tiếp qua lệnh hệ thống thay vì query SQL
+    // 4. Kết nối SSH
+    sendProgress("Đang thiết lập kết nối SSH...", 40);
     await sftp.connect({
       host: dbConfig.server,
       port: Number(dbConfig.sshPort) || 22,
@@ -104,33 +96,36 @@ export async function backupMySQL(dbConfig) {
       password: dbConfig.password,
     });
 
-    // Lệnh tạo file backup trên Ubuntu
-    // const dumpCommand = `mysqldump -u ${dbConfig.dbUser} -p'${dbConfig.dbPassword}' ${dbConfig.database} > ${filePathOnUbuntu}`;
-    // await sftp.client.exec(dumpCommand);
+    // 5. Chạy lệnh mysqldump (CHỈ CHẠY 1 LẦN)
     const dumpCommand = `mysqldump -u ${dbConfig.dbUser} -p'${dbConfig.dbPassword}' ${dbConfig.database} > ${filePathOnUbuntu}`;
-
-// SỬA: Sử dụng Promise để đợi lệnh thực thi xong và kiểm tra lỗi
+    
+    sendProgress("Đang thực thi mysqldump trên Server...", 55);
     await new Promise((resolve, reject) => {
-      if (!sftp.client) return reject(new Error("Kết nối SSH đã bị đóng trước khi chạy lệnh dump."));
+      if (!sftp.client) return reject(new Error("SSH client not connected"));
       
       sftp.client.exec(dumpCommand, (err, stream) => {
         if (err) return reject(err);
         stream
           .on("close", (code) => {
             if (code === 0) resolve();
-            else reject(new Error(`mysqldump thất bại với mã lỗi: ${code}`));
+            else reject(new Error(`mysqldump failed with code: ${code}`));
           })
-          .on("data", (data) => console.log("STDOUT: " + data))
+          .on("data", () => {
+             // Cập nhật nhẹ tiến trình khi có luồng dữ liệu phản hồi
+             sendProgress("Đang xuất dữ liệu SQL...", 60);
+          })
           .stderr.on("data", (data) => console.error("STDERR: " + data));
       });
     });
 
-    // 5. Kéo file về và xóa trên Ubuntu
+    // 6. Kéo file về local
+    sendProgress("Đang truyền file .sql về máy local...", 75);
     await sftp.fastGet(filePathOnUbuntu, filePathOnWindows);
     await sftp.delete(filePathOnUbuntu);
     await sftp.end();
 
-    // 6. Nén Zip và đặt mật khẩu
+    // 7. Nén Zip và mật khẩu
+    sendProgress("Đang nén ZIP bảo mật...", 90);
     await new Promise((resolve, reject) => {
       const output = fs.createWriteStream(zipPathOnWindows);
       const archive = archiver('zip-encryptable', {
@@ -146,10 +141,12 @@ export async function backupMySQL(dbConfig) {
       archive.finalize();
     });
 
-    // 7. Dọn dẹp file .sql thô trên Windows
+    // 8. Dọn dẹp
     if (fs.existsSync(filePathOnWindows)) {
       fs.unlinkSync(filePathOnWindows);
     }
+    
+    sendProgress("Hoàn tất backup MySQL!", 100);
 
     return {
       success: true,
@@ -163,6 +160,7 @@ export async function backupMySQL(dbConfig) {
     };
 
   } catch (err) {
+    sendProgress(`Lỗi: ${err.message}`, 0);
     if (connection) await connection.end().catch(() => {});
     try { await sftp.end(); } catch (e) { }
     if (fs.existsSync(filePathOnWindows)) fs.unlinkSync(filePathOnWindows);
