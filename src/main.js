@@ -236,14 +236,20 @@ ipcMain.handle("check-database-info", async (event, dbConfig) => {
 });
 
 
+// ipcMain.handle("create-sql-backup", async (event, dbConfig) => {
+//   const handler = backupHandlers[dbConfig.dbType];
+//   if (!handler) {
+//     return { success: false, error: "Unsupported database type" };
+//   }
+//   return await handler(dbConfig);
+// });
+
 ipcMain.handle("create-sql-backup", async (event, dbConfig) => {
   const handler = backupHandlers[dbConfig.dbType];
+  if (!handler) return { success: false, error: "Unsupported type" };
 
-  if (!handler) {
-    return { success: false, error: "Unsupported database type" };
-  }
-
-  return await handler(dbConfig);
+  // THÊM: Truyền 'event' vào làm tham số thứ 2
+  return await handler(dbConfig, event); 
 });
 
 ipcMain.handle("get-temp-files", async (event) => {

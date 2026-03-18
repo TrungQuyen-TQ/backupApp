@@ -81,7 +81,7 @@ function App() {
   const [dbList, setDbList] = useState([]);
   const [selectedDbs, setSelectedDbs] = useState([]);
   const [isFetchingDbs, setIsFetchingDbs] = useState(false);
-  
+
   const [showUploadPopup, setShowUploadPopup] = useState(false);
 
   const [isLoggedIn, setIsLoggedIn] = useState(true);
@@ -96,37 +96,63 @@ function App() {
 
   // --- Quản lý trạng thái Upload (Chỉ giữ 1 bộ duy nhất) ---
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadSpeed, setUploadSpeed] = useState(""); 
+  const [uploadSpeed, setUploadSpeed] = useState("");
   const [isUploading, setIsUploading] = useState(false);
 
+  // useEffect(() => {
+  //   // Biến để giữ hàm tháo gỡ (unsubscribe)
+  //   let unsubscribe;
+
+  //   if (window.electronAPI?.onUploadProgress) {
+  //     // Gọi hàm và lưu kết quả (trong preload.js hàm này trả về một function)
+  //     const result = window.electronAPI.onUploadProgress((data) => {
+  //       if (data && typeof data === 'object') {
+  //         setUploadProgress(data.progress || 0);
+  //         setUploadSpeed(data.speed || "0 MB/s");
+  //       } else {
+  //         setUploadProgress(data);
+  //       }
+  //     });
+
+  //     // Chỉ gán nếu kết quả trả về thực sự là một hàm
+  //     if (typeof result === 'function') {
+  //       unsubscribe = result;
+  //     }
+  //   }
+
+  //   // TRẢ VỀ: Một hàm ẩn danh để React gọi khi unmount
+  //   return () => {
+  //     if (typeof unsubscribe === 'function') {
+  //       unsubscribe();
+  //     }
+  //   };
+  // }, []);
+
   useEffect(() => {
-  // Biến để giữ hàm tháo gỡ (unsubscribe)
-  let unsubscribe;
+    let unsubUpload;
+    let unsubBackup;
 
-  if (window.electronAPI?.onUploadProgress) {
-    // Gọi hàm và lưu kết quả (trong preload.js hàm này trả về một function)
-    const result = window.electronAPI.onUploadProgress((data) => {
-      if (data && typeof data === 'object') {
+    // Lắng nghe tiến trình Upload
+    if (window.electronAPI?.onUploadProgress) {
+      unsubUpload = window.electronAPI.onUploadProgress((data) => {
         setUploadProgress(data.progress || 0);
-        setUploadSpeed(data.speed || "0 MB/s");
-      } else {
-        setUploadProgress(data);
-      }
-    });
-
-    // Chỉ gán nếu kết quả trả về thực sự là một hàm
-    if (typeof result === 'function') {
-      unsubscribe = result;
+        setUploadSpeed(data.speed || "");
+      });
     }
-  }
 
-  // TRẢ VỀ: Một hàm ẩn danh để React gọi khi unmount
-  return () => {
-    if (typeof unsubscribe === 'function') {
-      unsubscribe();
+    // SỬA: Lắng nghe thêm tiến trình Backup (Cần thêm hàm này vào preload.js)
+    if (window.electronAPI?.onBackupProgress) {
+      unsubBackup = window.electronAPI.onBackupProgress((data) => {
+        setUploadProgress(data.progress || 0); // Dùng chung state progress
+        setUploadSpeed(data.message || "Đang xử lý..."); // Hiện trạng thái backup vào ô tốc độ
+      });
     }
-  };
-}, []);
+
+    return () => {
+      if (unsubUpload) unsubUpload();
+      if (unsubBackup) unsubBackup();
+    };
+  }, []);
 
   // Hàm xử lý khi nhấn nút "Đẩy lên Google Drive" gốc
   const handleOpenDriveSelection = () => {
@@ -446,14 +472,14 @@ function App() {
               fullWidth
               //variant="outlined"
               onClick={() => setShowInputDbModal(false)}
-              sx={{ 
-              bgcolor: '#d32f2f', // Màu đỏ (tương đương color error của MUI)
-              color: '#fff',      // Chữ trắng
-              '&:hover': {
-                bgcolor: '#b71c1c', // Màu đỏ đậm hơn khi di chuột vào
-              },
-              px: 3 // Thêm chút padding cho đẹp cân đối với nút bên cạnh
-            }}
+              sx={{
+                bgcolor: '#d32f2f', // Màu đỏ (tương đương color error của MUI)
+                color: '#fff',      // Chữ trắng
+                '&:hover': {
+                  bgcolor: '#b71c1c', // Màu đỏ đậm hơn khi di chuột vào
+                },
+                px: 3 // Thêm chút padding cho đẹp cân đối với nút bên cạnh
+              }}
             >
               HỦY
             </Button>
@@ -613,8 +639,8 @@ function App() {
                     readOnly: true,
                     startAdornment: (
                       <InputAdornment position="start">
-                        <CloudIcon 
-                          sx={{ 
+                        <CloudIcon
+                          sx={{
                             color: isUploading ? "#1976d2" : "#b0bec5",
                             // Hiệu ứng nhấp nháy khi đang upload
                             animation: isUploading ? "pulse 1.5s infinite" : "none",
@@ -623,12 +649,12 @@ function App() {
                               "50%": { opacity: 0.4 },
                               "100%": { opacity: 1 },
                             }
-                          }} 
+                          }}
                         />
                       </InputAdornment>
                     ),
-                    sx: { 
-                      fontFamily: "'JetBrains Mono', 'Roboto Mono', monospace", 
+                    sx: {
+                      fontFamily: "'JetBrains Mono', 'Roboto Mono', monospace",
                       bgcolor: isUploading ? "#f0f7ff" : "#fafafa", // Đổi màu nền khi chạy
                       fontWeight: "bold",
                       fontSize: "0.9rem",
@@ -650,7 +676,7 @@ function App() {
                     <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, fontWeight: 500 }}>
                       {isUploading ? (
                         <>
-                          <CircularProgress size={10} thickness={6} /> 
+                          <CircularProgress size={10} thickness={6} />
                           <span style={{ color: '#1976d2' }}>Uploading files to Google Drive...</span>
                         </>
                       ) : (
@@ -662,7 +688,7 @@ function App() {
                 />
               </Box>
 
-              
+
             </Box>
           )}
 
@@ -792,18 +818,70 @@ function App() {
                 <Button
                   variant="outlined"
                   size="small"
+                  disabled={backingUpId !== null} // Vô hiệu hóa khi có bất kỳ tiến trình nào đang chạy
                   onClick={() => handleCheckVersion(log)}
                 >
                   CHECK
                 </Button>
+
                 <Button
                   variant="contained"
                   size="small"
-                  disabled={backingUpId !== null}
+                  disabled={backingUpId !== null && backingUpId !== log.id} // Chỉ vô hiệu hóa các nút KHÔNG phải đang backup
                   onClick={() => handleOpenBackupConfig(log, true)}
-                  sx={{ bgcolor: log.success ? "#7b1fa2" : "#b0bec5" }}
+                  sx={{
+                    // 1. LOGIC THAY ĐỔI MÀU NỀN
+                    // Nếu ID này đang được backup -> Hiện Gradient Tím Xanh
+                    // Nếu không -> Hiện màu tím tĩnh (hoặc xám nếu bản ghi cũ bị lỗi)
+                    backgroundImage: backingUpId === log.id
+                      ? "linear-gradient(45deg, #2196f3 30%, #a200d6 90%)"
+                      : (log.success ? "linear-gradient(to right, #7b1fa2, #7b1fa2)" : "#b0bec5"),
+
+                    // Hiệu ứng chuyển màu mượt mà khi bắt đầu backup
+                    transition: "all 0.4s ease",
+                    color: "#fff",
+                    minWidth: "100px",
+                    position: "relative",
+                    overflow: "hidden",
+                    fontWeight: "bold",
+                    boxShadow: backingUpId === log.id
+                      ? "0 4px 15px 2px rgba(33, 150, 243, .4)"
+                      : "none",
+                  }}
                 >
-                  {backingUpId === log.id ? "..." : "BACKUP"}
+                  {/* Hiển thị Nội dung chữ hoặc Phần trăm */}
+                  <Box sx={{ zIndex: 2, display: "flex", alignItems: "center", gap: 1 }}>
+                    {backingUpId === log.id ? (
+                      <>
+                        <CircularProgress size={14} color="inherit" thickness={5} />
+                        <Typography variant="caption" sx={{ fontWeight: "bold" }}>
+                          {uploadProgress}%
+                        </Typography>
+                      </>
+                    ) : (
+                      "BACKUP"
+                    )}
+                  </Box>
+
+                  {/* 2. THANH PROGRESS CHẠY NGẦM Ở DƯỚI (Vẫn giữ Gradient lấp lánh) */}
+                  {backingUpId === log.id && (
+                    <LinearProgress
+                      variant="determinate"
+                      value={uploadProgress}
+                      sx={{
+                        position: "absolute",
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        height: "100%", // Phủ toàn bộ chiều cao nút để tạo hiệu ứng làm đầy
+                        bgcolor: "transparent",
+                        opacity: 0.3, // Độ trong suốt để vẫn thấy được màu Gradient của nút ở dưới
+                        "& .MuiLinearProgress-bar": {
+                          backgroundImage: "linear-gradient(90deg, #ffeb3b 0%, #fff 50%, #ffeb3b 100%)",
+                        }
+                      }}
+                    />
+                  )}
                 </Button>
               </Box>
             </ListItem>
