@@ -63,6 +63,7 @@ function App() {
     sshPort: "26266",
     user: "root",
     password: '"04+Shl6|$#^"1@#qe06',
+    localPath: "C:\\db_backup",
     // Database Info (Mới)
     dbType: "sqlserver",
     port: "1433",
@@ -300,7 +301,7 @@ function App() {
           console.log(`MongoDB ${type} Databases:`, result.databases);
           setDbList(result.databases);
           break;
-        case "postgres": // <-- Thêm logic xử lý Postgres
+        case "postgresql": // <-- Thêm logic xử lý Postgres
           result = await window.electronAPI.db.getPostgres(log);
           console.log(`Postgres ${type} Databases:`, result.databases);
           setDbList(result.databases);
@@ -311,7 +312,6 @@ function App() {
           console.log("MSSQL Log Config:", log);
           result = await window.electronAPI.db.getMSSQL(log);
           setDbList(result.databases);
-          console.log(`Postgres ${type} Databases:`, result.databases);
 
           break;
       }

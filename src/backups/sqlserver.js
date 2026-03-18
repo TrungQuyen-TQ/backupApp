@@ -37,7 +37,6 @@ async function getDatabaseStats(pool) {
  * Logic chính xử lý Backup SQL Server
  */
 export async function backupSQLServer(dbConfig) {
-  console.log("Starting backup with config:", dbConfig);
 
   // 1. Khởi tạo đường dẫn và thư mục tạm
   const tempDirOnWindows = path.join(process.cwd(), "src", "temp");

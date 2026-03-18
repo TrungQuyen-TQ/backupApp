@@ -8,6 +8,7 @@ export default defineConfig({
       external: [
         "electron",
         // Database Drivers
+        'pg', 'pg-native',
         "mssql",
         "mysql2",
         "mysql2/promise",

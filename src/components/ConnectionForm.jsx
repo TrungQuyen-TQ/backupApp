@@ -67,18 +67,18 @@ const FormRow = ({
       InputProps={
         type === "password"
           ? {
-              endAdornment: (
-                <InputAdornment position="end">
-                  <IconButton
-                    onClick={() => setShowPass(!showPass)}
-                    size="small"
-                    edge="end"
-                  >
-                    {showPass ? <VisibilityOff /> : <Visibility />}
-                  </IconButton>
-                </InputAdornment>
-              ),
-            }
+            endAdornment: (
+              <InputAdornment position="end">
+                <IconButton
+                  onClick={() => setShowPass(!showPass)}
+                  size="small"
+                  edge="end"
+                >
+                  {showPass ? <VisibilityOff /> : <Visibility />}
+                </IconButton>
+              </InputAdornment>
+            ),
+          }
           : undefined
       }
     />
@@ -86,11 +86,11 @@ const FormRow = ({
 };
 
 const dbOptions = [
-  { label: "SQL Server", value: "sqlserver" },
-  { label: "MySQL", value: "mysql" },
-  { label: "MongoDB", value: "mongodb" },
-];
-
+  { label: "SQL Server", value: "sqlserver", port: "1433" },
+  { label: "MySQL", value: "mysql", port: "3306" },
+  { label: "MongoDB", value: "mongodb", port: "27017" },
+  { label: "PostgreSQL", value: "postgresql", port: "5432" }
+]
 export const ConnectionForm = ({ formData, setFormData, onConnectSuccess }) => {
   const [step, setStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
@@ -98,17 +98,23 @@ export const ConnectionForm = ({ formData, setFormData, onConnectSuccess }) => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
+    if (name === "dbType") {
+    const selectedOption = dbOptions.find(opt => opt.value === value);
+    if (selectedOption) {
+      formData.port = selectedOption.port;
+    }
+  }
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleLoginDbClick = async () => {
-  setIsLoading(true); // Bật loading
-  try {
-    await onConnectSuccess(); // Đợi logic ở cha chạy xong
-  } finally {
-    setIsLoading(false); // Tắt loading dù thành công hay thất bại
-  }
-};
+    setIsLoading(true); // Bật loading
+    try {
+      await onConnectSuccess(); // Đợi logic ở cha chạy xong
+    } finally {
+      setIsLoading(false); // Tắt loading dù thành công hay thất bại
+    }
+  };
 
   const handleNextStep = async () => {
     setErrorMsg("");
@@ -144,7 +150,7 @@ export const ConnectionForm = ({ formData, setFormData, onConnectSuccess }) => {
               alignItems: "center",
             }}
           >
-            <ServerIcon sx={{ mr: 1 }} /> 1. KẾT NỐI SERVER (SSH)
+            <ServerIcon sx={{ mr: 1 }} /> 1. KẾT NỐI SERVER
           </Typography>
 
           <FormRow
@@ -200,7 +206,7 @@ export const ConnectionForm = ({ formData, setFormData, onConnectSuccess }) => {
             {isLoading ? (
               <CircularProgress size={24} color="inherit" />
             ) : (
-              "TIẾP THEO"
+              "Đăng Nhập"
             )}
           </Button>
         </Box>
@@ -286,7 +292,7 @@ export const ConnectionForm = ({ formData, setFormData, onConnectSuccess }) => {
               {isLoading ? (
                 <CircularProgress size={24} color="inherit" />
               ) : (
-                "Đăng nhập"
+                "Lựa chọn"
               )}
             </Button>
           </Box>
