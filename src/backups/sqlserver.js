@@ -5,7 +5,6 @@ import SftpClient from "ssh2-sftp-client";
 import archiver from "archiver";
 import registerFormat from "archiver-zip-encryptable";
 
-
 /**
  * Hàm lấy thống kê dữ liệu thực tế từ DB
  */
@@ -36,44 +35,44 @@ async function getDatabaseStats(pool) {
 /**
  * Logic chính xử lý Backup SQL Server
  */
-export async function backupSQLServer(dbConfig) {
+export async function backupSQLServer(dbConfig, event) {
+  console.log("Starting backup with config:", dbConfig.database);
 
-  // 1. Khởi tạo đường dẫn và thư mục tạm
+  // Hàm hỗ trợ gửi tiến trình về UI
+  const sendProgress = (msg, percent) => {
+    if (event) {
+      event.sender.send("backup-progress", { message: msg, progress: percent });
+    }
+  };
+
+  // 1. Khởi tạo đường dẫn và tên file
   const tempDirOnWindows = path.join(process.cwd(), "src", "temp");
   if (!fs.existsSync(tempDirOnWindows)) {
     fs.mkdirSync(tempDirOnWindows, { recursive: true });
   }
 
-  // const timestamp = Date.now();
-  // const bakFileName = `${dbConfig.database}_${timestamp}.bak`;
-  // const zipFileName = `${dbConfig.database}_${timestamp}.zip`;
+  const now = new Date();
+  const formattedTime = now.getFullYear() + 
+                  String(now.getMonth() + 1).padStart(2, '0') + 
+                  String(now.getDate()).padStart(2, '0') + "_" + 
+                  String(now.getHours()).padStart(2, '0') + 
+                  String(now.getMinutes()).padStart(2, '0');
 
-  // Thêm đoạn này vào ngay sau dòng console.log("Starting backup...")
-const now = new Date();
-const formattedTime = now.getFullYear() + 
-                String(now.getMonth() + 1).padStart(2, '0') + 
-                String(now.getDate()).padStart(2, '0') + "_" + 
-                String(now.getHours()).padStart(2, '0') + 
-                String(now.getMinutes()).padStart(2, '0');
-
-const finalZipName = `SQLSERVER_${dbConfig.database}_${formattedTime}.zip`; // Tên file ZIP cuối cùng
-const rawBakName = `${dbConfig.database}_${Date.now()}.bak`; // Tên file tạm (giữ nguyên Date.now để tránh trùng)
+  const finalZipName = `SQLSERVER_${dbConfig.database}_${formattedTime}.zip`;
+  const rawBakName = `${dbConfig.database}_${Date.now()}.bak`;
   
   const filePathOnWindows = path.join(tempDirOnWindows, rawBakName);
   const zipPathOnWindows = path.join(tempDirOnWindows, finalZipName);
   const filePathOnUbuntu = `/var/opt/mssql/data/${rawBakName}`;
   const passwordPath = path.join(process.cwd(), "configs", "passwordzip.json");
 
-  // 2. Đọc mật khẩu Zip từ file config
+  // 2. Đọc mật khẩu Zip
   let backupPassword = "DefaultPassword123";
   try {
     if (fs.existsSync(passwordPath)) {
       const rawData = fs.readFileSync(passwordPath, 'utf8');
       const config = JSON.parse(rawData);
       backupPassword = config.password;
-      console.log("Password zip loaded from config.");
-    } else {
-      console.warn("Using default backup password.");
     }
   } catch (error) {
     console.error("Lỗi đọc passwordzip.json:", error.message);
@@ -82,7 +81,8 @@ const rawBakName = `${dbConfig.database}_${Date.now()}.bak`; // Tên file tạm 
   const sftp = new SftpClient();
 
   try {
-    // 3. Kết nối SQL Server, Lấy Stats và chạy lệnh Backup
+    // 3. Kết nối SQL Server
+    sendProgress("Đang kết nối SQL Server...", 10);
     const pool = await sql.connect({
       user: dbConfig.dbUser,
       password: dbConfig.dbPassword,
@@ -96,14 +96,19 @@ const rawBakName = `${dbConfig.database}_${Date.now()}.bak`; // Tên file tạm 
       },
     });
 
+    // 4. Lấy Stats
+    sendProgress("Đang quét thống kê dữ liệu...", 25);
     const stats = await getDatabaseStats(pool);
 
+    // 5. Chạy lệnh Backup trên Server
+    sendProgress(`Đang thực thi lệnh BACKUP DATABASE...`, 45);
     await pool.request().query(
       `BACKUP DATABASE [${dbConfig.database}] TO DISK = '${filePathOnUbuntu}' WITH INIT`
     );
     await pool.close();
 
-    // 4. Kết nối SFTP, Kéo file về và Xóa file trên Ubuntu
+    // 6. Kết nối SSH và kéo file về
+    sendProgress("Đang kết nối SSH để truyền file...", 65);
     await sftp.connect({
       host: dbConfig.server,
       port: Number(dbConfig.sshPort) || 22,
@@ -112,11 +117,13 @@ const rawBakName = `${dbConfig.database}_${Date.now()}.bak`; // Tên file tạm 
       readyTimeout: 15000,
     });
 
+    sendProgress("Đang tải file .bak về máy local...", 80);
     await sftp.fastGet(filePathOnUbuntu, filePathOnWindows);
     await sftp.delete(filePathOnUbuntu);
     await sftp.end();
 
-    // 5. Nén Zip và đặt mật khẩu
+    // 7. Nén Zip và đặt mật khẩu
+    sendProgress("Đang nén ZIP bảo mật...", 95);
     await new Promise((resolve, reject) => {
       const output = fs.createWriteStream(zipPathOnWindows);
       const archive = archiver('zip-encryptable', {
@@ -132,10 +139,12 @@ const rawBakName = `${dbConfig.database}_${Date.now()}.bak`; // Tên file tạm 
       archive.finalize();
     });
 
-    // 6. Dọn dẹp file .bak thô trên Windows
+    // 8. Dọn dẹp file tạm
     if (fs.existsSync(filePathOnWindows)) {
       fs.unlinkSync(filePathOnWindows);
     }
+
+    sendProgress("Hoàn tất!", 100);
 
     return {
       success: true,
@@ -149,6 +158,7 @@ const rawBakName = `${dbConfig.database}_${Date.now()}.bak`; // Tên file tạm 
     };
 
   } catch (err) {
+    sendProgress(`Lỗi: ${err.message}`, 0);
     try { await sftp.end(); } catch (e) { }
     if (fs.existsSync(filePathOnWindows)) fs.unlinkSync(filePathOnWindows);
     console.error("Lỗi quy trình backup:", err.message);
