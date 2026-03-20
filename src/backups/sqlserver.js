@@ -8,7 +8,7 @@ import registerFormat from "archiver-zip-encryptable";
 /**
  * Hàm lấy thống kê dữ liệu thực tế từ DB
  */
-async function getDatabaseStats(pool) {
+export async function getSqlServerStats(pool) {
   const versionRaw = await pool.request().query("SELECT @@VERSION as version");
   const shortVersion = versionRaw.recordset[0].version.split("-")[0].split("\n")[0].trim();
 

@@ -8,7 +8,7 @@ import registerFormat from "archiver-zip-encryptable";
 /**
  * Hàm lấy thống kê dữ liệu thực tế từ MongoDB
  */
-async function getDatabaseStats(client, dbName) {
+export async function getMongoStats(client, dbName) {
   const db = client.db(dbName);
   const collections = await db.listCollections().toArray();
 
