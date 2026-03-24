@@ -788,33 +788,35 @@ ipcMain.handle("save-auto-backup", async (event, config) => {
 });
 
 // Thêm handler này vào main.js
-ipcMain.handle("stop-auto-backup", async (event, taskId) => {
-  try {
-    // 1. Kiểm tra xem Job có tồn tại trong bộ nhớ không
-    if (activeJobs[taskId]) {
-      activeJobs[taskId].stop(); // Lệnh dừng node-cron
-      delete activeJobs[taskId]; // Xóa khỏi bộ nhớ quản lý
-      console.log(`[Cron] Đã dừng thành công Task: ${taskId}`);
+  ipcMain.handle("stop-auto-backup", async (event, taskId) => {
+    try {
+      console.log(`[Cron] Yêu cầu dừng Task ID: ${taskId}`);
+      console.log(`[Cron] Active Jobs hiện tại:`, activeJobs);
+      // 1. Kiểm tra xem Job có tồn tại trong bộ nhớ không
+      if (activeJobs[taskId]) {
+        activeJobs[taskId].stop(); // Lệnh dừng node-cron
+        delete activeJobs[taskId]; // Xóa khỏi bộ nhớ quản lý
+        console.log(`[Cron] Đã dừng thành công Task: ${taskId}`);
+      }
+
+      // 2. Cập nhật lại file JSON (Chuyển trạng thái hoặc xóa)
+      if (fs.existsSync(AUTO_CONFIG_PATH)) {
+        let configs = JSON.parse(fs.readFileSync(AUTO_CONFIG_PATH, "utf8"));
+        // Cách 1: Xóa hẳn task khỏi danh sách
+        configs = configs.filter(task => task.id !== taskId);
+        
+        // Hoặc Cách 2: Thêm thuộc tính enabled: false nếu bạn muốn giữ lại cấu hình
+        // configs = configs.map(task => task.id === taskId ? { ...task, enabled: false } : task);
+
+        fs.writeFileSync(AUTO_CONFIG_PATH, JSON.stringify(configs, null, 2));
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error("Lỗi khi dừng backup:", error);
+      return { success: false, error: error.message };
     }
-
-    // 2. Cập nhật lại file JSON (Chuyển trạng thái hoặc xóa)
-    if (fs.existsSync(AUTO_CONFIG_PATH)) {
-      let configs = JSON.parse(fs.readFileSync(AUTO_CONFIG_PATH, "utf8"));
-      // Cách 1: Xóa hẳn task khỏi danh sách
-      configs = configs.filter(task => task.id !== taskId);
-      
-      // Hoặc Cách 2: Thêm thuộc tính enabled: false nếu bạn muốn giữ lại cấu hình
-      // configs = configs.map(task => task.id === taskId ? { ...task, enabled: false } : task);
-
-      fs.writeFileSync(AUTO_CONFIG_PATH, JSON.stringify(configs, null, 2));
-    }
-
-    return { success: true };
-  } catch (error) {
-    console.error("Lỗi khi dừng backup:", error);
-    return { success: false, error: error.message };
-  }
-});
+  });
 
 
 
