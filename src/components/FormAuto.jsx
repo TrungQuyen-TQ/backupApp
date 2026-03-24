@@ -18,6 +18,7 @@ import StorageIcon from "@mui/icons-material/Storage";
 import ScheduleIcon from "@mui/icons-material/Schedule";
 import AddIcon from "@mui/icons-material/Add";
 import IconButton from "@mui/material/IconButton";
+import CloseIcon from "@mui/icons-material/Close";
 
 const icon = <CheckBoxOutlineBlankIcon fontSize="small" />;
 const checkedIcon = <CheckBoxIcon fontSize="small" />;
@@ -99,6 +100,20 @@ export const FormAuto = ({
     time: "02:00", // Giờ bắt đầu
     retention: 7, // Số bản giữ lại
   });
+
+  const handleStopBackup = async (taskId) => {
+  if (window.confirm("Bạn có chắc chắn muốn dừng và xóa lịch backup này?")) {
+    console.log("Yêu cầu dừng backup với ID:", taskId);
+    const result = await window.electronAPI.stopAutoBackup(taskId);
+    if (result.success) {
+      // Cập nhật lại state của UI để task biến mất ngay lập tức
+      setActiveTasks((prev) => prev.filter(t => t.id !== taskId));
+      console.log("Đã dừng backup thành công");
+    } else {
+      alert("Lỗi: " + result.error);
+    }
+  }
+};
 
   const handleSaveConfig = async () => {
     const finalConfig = {
@@ -349,8 +364,29 @@ export const FormAuto = ({
                   <Paper
                     key={task.id}
                     elevation={1}
-                    sx={{ p: 2, borderLeft: "4px solid #4caf50" }}
+                    sx={{
+                      p: 2,
+                      borderLeft: "4px solid #4caf50",
+                      position: "relative", // Quan trọng để đặt nút Close tuyệt đối
+                      pr: 6, // Thêm padding phải để nội dung không bị nút đè lên
+                    }}
                   >
+                    <IconButton
+                      size="small"
+                      onClick={() => handleStopBackup(task.id)}
+                      sx={{
+                        position: "absolute",
+                        top: 8,
+                        right: 8,
+                        color: "grey.500",
+                        "&:hover": {
+                          color: "error.main",
+                          bgcolor: "rgba(211, 47, 47, 0.04)",
+                        },
+                      }}
+                    >
+                      <CloseIcon fontSize="small" />
+                    </IconButton>
                     <Typography variant="subtitle2" color="primary">
                       🌐 Server: {task.server?.server} ({task.server?.dbType})
                     </Typography>
