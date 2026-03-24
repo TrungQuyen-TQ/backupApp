@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, ipcMain, shell,dialog } from "electron";
 import path from "node:path";
 import fs from "node:fs";
 import { google } from "googleapis";
@@ -872,6 +872,19 @@ ipcMain.handle("stop-all-backups", async () => {
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message };
+  }
+});
+
+
+ipcMain.handle('open-directory-dialog', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openDirectory'] // Chỉ cho phép chọn thư mục
+  });
+
+  if (result.canceled) {
+    return null;
+  } else {
+    return result.filePaths[0]; // Trả về đường dẫn thư mục đầu tiên được chọn
   }
 });
 
