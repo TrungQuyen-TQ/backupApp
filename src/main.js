@@ -35,7 +35,11 @@ if (started) {
 }
 
 // --- Cấu hình đường dẫn ---
+// Đảm bảo đường dẫn configs luôn đúng
 const CONFIG_DIR = path.join(process.cwd(), "configs");
+if (!fs.existsSync(CONFIG_DIR)) fs.mkdirSync(CONFIG_DIR);
+
+
 const CREDENTIALS_PATH = path.join(CONFIG_DIR, "client_secret.json");
 const CONTACTS_PATH = path.join(CONFIG_DIR, "contacts.json");
 const TOKEN_PATH = path.join(app.getPath("userData"), "token.json");
@@ -43,6 +47,86 @@ const SCOPES = [
   "https://www.googleapis.com/auth/drive.file",
   "https://www.googleapis.com/auth/gmail.send",
 ];
+
+const HISTORY_BACKUP_PATH = path.join(CONFIG_DIR, "history_backup.json");
+const HISTORY_UPLOAD_PATH = path.join(CONFIG_DIR, "history_upload.json");
+
+
+
+// Hàm phụ trợ lưu history
+// main.js - Sửa lại hàm saveHistory một chút cho Linh
+const saveHistory = (filePath, data) => {
+  try {
+    // Chỉ lưu nếu data có giá trị hợp lệ
+    if (!data) return { success: false };
+
+    let history = [];
+    if (fs.existsSync(filePath)) {
+      const content = fs.readFileSync(filePath, "utf8");
+      history = content ? JSON.parse(content) : [];
+    }
+
+    // Đảm bảo stats luôn là một object để không bị lỗi undefined ở UI
+    const secureData = {
+      ...data,
+      stats: data.stats || { rowCounts: {}, shortVersion: "N/A" }
+    };
+
+    history.unshift({ ...secureData, id: Date.now(), timestamp: new Date().toLocaleString("vi-VN") });
+    fs.writeFileSync(filePath, JSON.stringify(history.slice(0, 100), null, 2));
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
+
+ipcMain.handle("save-backup-history", (event, data) => saveHistory(HISTORY_BACKUP_PATH, data));
+ipcMain.handle("save-upload-history", (event, data) => saveHistory(HISTORY_UPLOAD_PATH, data));
+
+
+ipcMain.handle("get-history", (event, type) => {
+  try {
+    const filePath = type === "backup" ? HISTORY_BACKUP_PATH : HISTORY_UPLOAD_PATH;
+    if (fs.existsSync(filePath)) {
+      const data = fs.readFileSync(filePath, "utf8");
+      return JSON.parse(data);
+    }
+    return [];
+  } catch (e) {
+    return [];
+  }
+});
+
+
+// main.js
+
+// Handler xóa từng bản ghi
+ipcMain.handle("delete-history-item", async (event, { type, id }) => {
+  try {
+    const filePath = type === "backup" ? HISTORY_BACKUP_PATH : HISTORY_UPLOAD_PATH;
+    if (fs.existsSync(filePath)) {
+      let history = JSON.parse(fs.readFileSync(filePath, "utf8"));
+      history = history.filter(item => item.id !== id);
+      fs.writeFileSync(filePath, JSON.stringify(history, null, 2));
+      return { success: true };
+    }
+    return { success: false, error: "File không tồn tại" };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// Handler xóa sạch lịch sử của một Tab
+ipcMain.handle("clear-all-history", async (event, type) => {
+  try {
+    const filePath = type === "backup" ? HISTORY_BACKUP_PATH : HISTORY_UPLOAD_PATH;
+    fs.writeFileSync(filePath, JSON.stringify([], null, 2));
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
 
 // main.js
 
@@ -236,13 +320,25 @@ ipcMain.handle("check-database-info", async (event, dbConfig) => {
 });
 
 
-// ipcMain.handle("create-sql-backup", async (event, dbConfig) => {
-//   const handler = backupHandlers[dbConfig.dbType];
-//   if (!handler) {
-//     return { success: false, error: "Unsupported database type" };
-//   }
-//   return await handler(dbConfig);
-// });
+// Thêm vào main.js cùng các handler khác
+ipcMain.handle("update-drive-accounts", async (event, accounts) => {
+  try {
+    const DRIVE_ACCOUNTS_PATH = path.join(process.cwd(), "configs", "drive_accounts.json");
+    fs.writeFileSync(DRIVE_ACCOUNTS_PATH, JSON.stringify(accounts, null, 2));
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+
+
+// main.js hoặc src/ipc/db-postgres.js
+ipcMain.handle("create-postgres-backup", async (event, dbConfig) => {
+  // Đảm bảo truyền 'event' là tham số thứ 2
+  return await backupPostgresSql(dbConfig, event); 
+});
+
 
 ipcMain.handle("create-sql-backup", async (event, dbConfig) => {
   const handler = backupHandlers[dbConfig.dbType];
