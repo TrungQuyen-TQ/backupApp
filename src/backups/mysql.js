@@ -8,7 +8,7 @@ import registerFormat from "archiver-zip-encryptable";
 /**
  * Hàm lấy thống kê dữ liệu thực tế từ MySQL
  */
-async function getDatabaseStats(connection, dbName) {
+export async function getMysqlStats(connection, dbName) {
   const [versionRows] = await connection.query("SELECT VERSION() as version");
   const shortVersion = versionRows[0].version;
 
