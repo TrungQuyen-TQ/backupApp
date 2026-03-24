@@ -5,7 +5,7 @@ import { Client as SshClient } from 'ssh2';
 /**
  * Hàm nội bộ thực thi các lệnh qua SSH (Logic lõi)
  */
-async function executeSshBackup(sshConfig, backupConfig) {
+async function executeSshBackup(sshConfig, backupConfig, sendProgress) {
 
   return new Promise((resolve) => {
     const ssh = new SshClient();
@@ -13,6 +13,7 @@ async function executeSshBackup(sshConfig, backupConfig) {
     const { dblist, dbUser, dbPassword, localPath, zipPassword } = backupConfig;
 
     ssh.on('ready', () => {
+      sendProgress("Đang thực thi pg_dump và nén file trên Server...", 30);
       const remoteSqlFile = `/tmp/dump_${dblist}_${Date.now()}.sql`;
       const remoteZipFile = `${remoteSqlFile}.7z`;
 
@@ -33,11 +34,17 @@ async function executeSshBackup(sshConfig, backupConfig) {
           return resolve({ success: false, error: "SSH Exec Error: " + err.message });
         }
 
+        
+
         stream.on('data', (data) => console.log('STDOUT: ' + data));
         let stderr = '';
         stream.stderr.on('data', (data) => {
           stderr += data.toString();
         });
+
+
+        // Cập nhật khi có dữ liệu chạy qua
+        stream.on('data', () => sendProgress("Đang xuất dữ liệu Postgres...", 45));
 
         stream.on('close', (code) => {
           if (code !== 0) {
@@ -46,11 +53,15 @@ async function executeSshBackup(sshConfig, backupConfig) {
             return resolve({ success: false, error: `Lỗi Server (Code ${code}): ${stderr}` });
           }
 
+          sendProgress("Đang chuẩn bị SFTP để tải file...", 65);
+
           ssh.sftp((err, sftp) => {
             if (err) {
               ssh.end();
               return resolve({ success: false, error: "SFTP Error: " + err.message });
             }
+
+            sendProgress("Đang tải file backup .7z về máy local...", 80);
 
             // Tải file về localPath đã được chuẩn bị sẵn
             sftp.fastGet(remoteZipFile, localPath, {}, (downloadErr) => {
@@ -61,6 +72,7 @@ async function executeSshBackup(sshConfig, backupConfig) {
 
               sftp.unlink(remoteZipFile, () => {
                 ssh.end();
+                sendProgress("Hoàn tất quy trình Postgres!", 100);
                 resolve({ success: true, message: "Backup & Download thành công!", path: localPath });
               });
             });
@@ -115,7 +127,12 @@ async function getDatabaseStats(client, dbName) {
  */
 import { Client } from 'pg'; // Hãy dùng createRequire nếu bị lỗi Vite bundle
 
-export async function backupPostgresSql(formData) {
+export async function backupPostgresSql(formData, event) {
+
+  const sendProgress = (msg, percent) => {
+    if (event) event.sender.send("backup-progress", { message: msg, progress: percent });
+  };
+
   // 1. Đọc mật khẩu Zip từ file JSON
   const passwordPath = path.join(process.cwd(), "configs", "passwordzip.json");
   let backupPassword = "DefaultPassword123";
@@ -128,6 +145,8 @@ export async function backupPostgresSql(formData) {
     console.warn("Không đọc được file mật khẩu, dùng mặc định.");
   }
 
+
+  sendProgress("Đang quét thống kê Database Postgres...", 10);
   // 2. Lấy Thống kê (Stats) từ Database qua port 5432 (hoặc dbPort)
   let dbStats = { shortVersion: "N/A", rowCounts: {} };
   const pgClient = new Client({
@@ -157,6 +176,8 @@ export async function backupPostgresSql(formData) {
     }
   }
 
+
+  sendProgress("Đang thiết lập kết nối SSH...", 20);
   // 4. Chuẩn bị cấu hình chi tiết
   const finalFileName = `backup_${formData.database}_${Date.now()}.7z`;
   const fullLocalPath = path.join(localDir, finalFileName);
@@ -177,7 +198,7 @@ export async function backupPostgresSql(formData) {
   };
 
   // 5. Gọi logic SSH thực hiện Backup & Download
-  const backupResult = await executeSshBackup(sshConfig, backupConfig);
+  const backupResult = await executeSshBackup(sshConfig, backupConfig, sendProgress);
 
   // 6. Trả về kết quả cuối cùng cho Client (Dựa trên yêu cầu của bạn)
   if (backupResult.success) {

@@ -32,7 +32,10 @@ import ErrorIcon from "@mui/icons-material/Error";
 import { FormAuto } from "./components/FormAuto";
 import { TabsHeader } from "./components/TabsHeader";
 import { ConnectionForm } from "./components/ConnectionForm";
+import { CloudBackup } from "./components/CloudBackup"; // Import component mới
 import { useTheme } from "@mui/material/styles";
+import { GmailManager } from "./components/GmailManager"; // Đảm bảo đúng đường dẫn file bạn vừa tạo
+import { HistoryManager } from "./components/HistoryManager"; // Đảm bảo đúng đường dẫn file bạn vừa tạo
 
 const ITEM_HEIGHT = 48;
 const ITEM_PADDING_TOP = 8;
@@ -99,8 +102,6 @@ function App() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadSpeed, setUploadSpeed] = useState("");
   const [isUploading, setIsUploading] = useState(false);
-
-  // useEffect(() => {
   //   // Biến để giữ hàm tháo gỡ (unsubscribe)
   //   let unsubscribe;
 
@@ -228,11 +229,18 @@ function App() {
       if (result.success) {
         setBackupStats(result);
         setShowBackupModal(true);
+
+        // THÊM: Lưu vào History
+        await window.electronAPI.saveBackupHistory({
+          dbName: result.dbName,
+          fileName: result.fileName,
+          stats: result.stats
+        });
       } else {
-        showMsg(`❌ Lỗi [${log.database}]: ${result.error}`);
+        showMsg(`❌ Lỗi: ${result.error}`, "error");
       }
     } catch (err) {
-      showMsg(`⚠️ Lỗi hệ thống: ${err.message}`);
+      showMsg(`⚠️ Lỗi hệ thống: ${err.message}`, "error");
     } finally {
       setBackingUpId(null);
     }
@@ -263,48 +271,46 @@ function App() {
 
   // App.jsx
   const handleUploadFiles = async (filesToUpload, targetEmails) => {
-    setUploadProgress(0); // <--- Reset % về 0 cho đợt mới
-    setUploadSpeed("Đang khởi tạo..."); // Thông báo bắt đầu đợt mới
-    setIsLoading(true);
-    setIsUploading(true);
-    setShowUploadPopup(false);
+  setUploadProgress(0);
+  setUploadSpeed("Đang khởi tạo...");
+  setIsLoading(true);
+  setIsUploading(true);
+  setShowUploadPopup(false);
 
-    let overallSuccess = true;
+  let overallSuccess = true;
 
-    try {
-      // 1. Chạy vòng lặp upload cho từng Email
-      for (const email of targetEmails) {
-        const driveResult = await window.electronAPI.uploadToDrive({
-          files: filesToUpload,
-          targetEmail: email,
+  try {
+    for (const email of targetEmails) {
+      const driveResult = await window.electronAPI.uploadToDrive({
+        files: filesToUpload,
+        targetEmail: email,
+      });
+
+      if (driveResult.success) {
+        // LƯU HISTORY: Chỉ lưu 1 lần cho mỗi lượt upload lên 1 Drive
+        // Gom tên các file thành 1 chuỗi để dễ nhìn trong History
+        const fileNames = filesToUpload.map(f => f.name).join(", ");
+        await window.electronAPI.saveUploadHistory({
+          fileName: fileNames, // Lưu danh sách file
+          targetEmail: email
         });
-
-        if (!driveResult.success) {
-          overallSuccess = false;
-          showMsg(`Lỗi upload Drive ${email}: ${driveResult.error}`, "error");
-        }
-      }
-
-      // 2. CHỈ XÓA FILE SAU KHI TẤT CẢ EMAIL ĐÃ CHẠY XONG
-      if (overallSuccess) {
-        await window.electronAPI.deleteTempFiles(filesToUpload);
-        showMsg(
-          `Hoàn tất đẩy file lên ${targetEmails.length} Drive và đã dọn dẹp file tạm.`,
-          "success",
-        );
       } else {
-        showMsg(
-          "Quá trình hoàn tất nhưng có một số Drive bị lỗi. File tạm chưa được xóa để bạn có thể thử lại.",
-          "warning",
-        );
+        overallSuccess = false;
+        showMsg(`Lỗi upload Drive ${email}: ${driveResult.error}`, "error");
       }
-    } catch (err) {
-      showMsg("Lỗi hệ thống: " + err.message, "error");
-    } finally {
-      setIsLoading(false);
-      setIsUploading(false);
     }
-  };
+
+    if (overallSuccess) {
+      await window.electronAPI.deleteTempFiles(filesToUpload);
+      showMsg(`Hoàn tất đẩy file lên ${targetEmails.length} Drive.`, "success");
+    }
+  } catch (err) {
+    showMsg("Lỗi hệ thống: " + err.message, "error");
+  } finally {
+    setIsLoading(false);
+    setIsUploading(false);
+  }
+};
 
   const handleOpenBackupConfig = async (log, showModal = true) => {
     setSelectedLogForBackup(log);
@@ -578,316 +584,240 @@ function App() {
         </Box>
       </Modal>
 
-      {/* CỘT TRÁI */}
-      <Paper
-        elevation={2}
+      <Box
         sx={{
-          width: "100%",
-          maxWidth: 500,
-          borderRadius: 2,
-          overflow: "hidden",
+          bgcolor: "#eaeff1",
+          minHeight: "100vh",
+          p: 3,
           display: "flex",
           flexDirection: "column",
+          gap: 2,
+          // Đảm bảo Box ngoài cùng chiếm toàn bộ chiều ngang
+          width: "100vw",
+          boxSizing: "border-box"
         }}
       >
-        <TabsHeader activeTab={activeTab} setActiveTab={setActiveTab} />
-        <Box sx={{ flex: 1, overflowY: "auto" }}>
-          {activeTab === 0 && (
-            <Box>
+        {/* --- KHỐI TRÊN: CẤU HÌNH VÀ CHỨC NĂNG --- */}
+        <Paper
+          elevation={2}
+          sx={{
+            width: "100%",
+            borderRadius: 2,
+            overflow: "hidden", // Giữ để bo góc mượt
+            display: "flex",
+            flexDirection: "column",
+            mb: 1, // Khoảng cách nhỏ với khối dưới
+          }}
+        >
+          <TabsHeader activeTab={activeTab} setActiveTab={setActiveTab} />
+
+          {/* Box nội dung không dùng scroll, cho phép dãn tự nhiên */}
+          <Box sx={{ p: 0 }}>
+            {activeTab === 0 && (
               <ConnectionForm
                 formData={formData}
                 setFormData={setFormData}
                 onConnectSuccess={handleTestConnection}
               />
-              <Box sx={{ p: 2, borderTop: "1px solid #eee", bgcolor: "#fff" }}>
-                {/* Nút bấm đẩy lên Drive */}
-                <Button
-                  fullWidth
-                  onClick={handleOpenUploadPopup}
-                  variant="contained"
-                  startIcon={
-                    isUploading ? <CircularProgress size={20} color="inherit" /> : <CloudIcon />
-                  }
-                  disabled={isLoading || isUploading}
-                  sx={{ py: 1.5, position: "relative", overflow: "hidden", mb: 2 }}
-                >
-                  {isUploading ? `Đang tải lên (${uploadProgress}%)` : "Đẩy lên Google Drive"}
-                  {isUploading && (
-                    <LinearProgress
-                      variant="determinate"
-                      value={uploadProgress}
-                      sx={{
-                        position: "absolute",
-                        bottom: 0,
-                        left: 0,
-                        right: 0,
-                        height: 4,
-                      }}
-                    />
-                  )}
-                </Button>
+            )}
 
-                {/* Ô Input động hiển thị tốc độ - Luôn hiển thị */}
-                <TextField
-                  fullWidth
-                  label="Giám sát đường truyền"
-                  size="small"
-                  variant="outlined"
-                  value={isUploading ? uploadSpeed : "Hệ thống sẵn sàng"}
-                  // SỬA: Dùng InputProps để tùy chỉnh sâu CSS
-                  InputProps={{
-                    readOnly: true,
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <CloudIcon
-                          sx={{
-                            color: isUploading ? "#1976d2" : "#b0bec5",
-                            // Hiệu ứng nhấp nháy khi đang upload
-                            animation: isUploading ? "pulse 1.5s infinite" : "none",
-                            "@keyframes pulse": {
-                              "0%": { opacity: 1 },
-                              "50%": { opacity: 0.4 },
-                              "100%": { opacity: 1 },
-                            }
-                          }}
-                        />
-                      </InputAdornment>
-                    ),
-                    sx: {
-                      fontFamily: "'JetBrains Mono', 'Roboto Mono', monospace",
-                      bgcolor: isUploading ? "#f0f7ff" : "#fafafa", // Đổi màu nền khi chạy
-                      fontWeight: "bold",
-                      fontSize: "0.9rem",
-                      color: isUploading ? "#1976d2" : "#607d8b",
-                      transition: "all 0.3s ease", // Hiệu ứng chuyển màu mượt mà
-                      "& fieldset": {
-                        borderColor: isUploading ? "#1976d2 !important" : "#e0e0e0",
-                        borderWidth: isUploading ? "2px" : "1px",
-                      },
-                      "&:hover fieldset": {
-                        borderColor: "#1976d2",
-                      },
-                      // Đổ bóng nhẹ cho ô input
-                      boxShadow: isUploading ? "0 0 8px rgba(25, 118, 210, 0.2)" : "none",
-                    }
-                  }}
-                  // Tùy chỉnh dòng chữ bên dưới
-                  helperText={
-                    <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, fontWeight: 500 }}>
-                      {isUploading ? (
-                        <>
-                          <CircularProgress size={10} thickness={6} />
-                          <span style={{ color: '#1976d2' }}>Uploading files to Google Drive...</span>
-                        </>
-                      ) : (
-                        "Trạng thái: Nhàn rỗi"
-                      )}
-                    </Box>
-                  }
-                  sx={{ mt: 1 }}
+            {activeTab === 1 && (
+              <Box sx={{ p: 2 }}>
+                <FormAuto
+                  connectionLogs={connectionLogs}
+                  setActiveTab={setActiveTab}
+                  onFetchDatabases={handleOpenBackupConfig}
+                  dbList={dbList}
+                  isFetching={isFetchingDbs}
                 />
               </Box>
+            )}
 
-
-            </Box>
-          )}
-
-          {activeTab === 1 && (
-            <Box sx={{ p: 2 }}>
-              <FormAuto
-                connectionLogs={connectionLogs}
-                setActiveTab={setActiveTab}
-                onFetchDatabases={handleOpenBackupConfig}
-                // Truyền thêm list DB để FormAuto hiển thị
-                dbList={dbList}
-                isFetching={isFetchingDbs}
+            {activeTab === 2 && (
+              <CloudBackup
+                handleOpenUploadPopup={handleOpenUploadPopup}
+                isUploading={isUploading}
+                uploadProgress={uploadProgress}
+                uploadSpeed={uploadSpeed}
+                isLoading={isLoading}
               />
-            </Box>
-          )}
-        </Box>
+            )}
 
-        {/* SỬA: Đưa nút Cloud vào cuối Cột Trái để giao diện cân đối */}
-      </Paper>
 
-      {/* CỘT PHẢI */}
-      <Paper
-        elevation={2}
-        sx={{
-          flex: 1,
-          borderRadius: 2,
-          p: 2,
-          maxHeight: "100vh",
-          overflowY: "auto",
-        }}
-      >
-        <Typography variant="h6" sx={{ mb: 2, fontWeight: "bold" }}>
-          Lịch sử kết nối
-        </Typography>
-        <Divider />
-        <List sx={{ px: 1 }}>
-          {connectionLogs.map((log) => (
-            <ListItem
-              key={log.id}
-              sx={{
-                mb: 2,
-                borderRadius: "12px",
-                border: "1px solid #e0e4e8",
-                p: 2,
-                flexDirection: "column",
-                alignItems: "stretch",
-              }}
-            >
-              <Box
-                sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}
-              >
-                <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-                  <Box
-                    sx={{
-                      p: 1,
-                      borderRadius: "8px",
-                      bgcolor: log.success ? "#e8f5e9" : "#ffebee",
-                    }}
-                  >
-                    {log.success ? (
-                      <CheckCircleIcon color="success" />
-                    ) : (
-                      <ErrorIcon color="error" />
-                    )}
-                  </Box>
-                  <Box>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                      {log.server}
-                    </Typography>
+            {/* Trong App.jsx, đoạn Khối Trên */}
+            {activeTab === 3 && (
+              <GmailManager showMsg={showMsg} />
+            )}
 
-                    {/* THÊM DÒNG NÀY: Hiển thị Loại DB và Port */}
-                    <Box
-                      sx={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 1,
-                        mt: 0.2,
-                      }}
-                    >
-                      <Typography
-                        variant="caption"
-                        sx={{
-                          textTransform: "uppercase",
-                          fontWeight: 800,
-                          color:
-                            log.dbType === "mongodb" ? "#4db33d" : "#00758f", // Màu theo brand
-                          fontSize: "0.65rem",
-                        }}
-                      >
-                        {log.dbType || "MSSQL"}
-                      </Typography>
-                      <Typography variant="caption" sx={{ color: "#9e9e9e" }}>
-                        •
-                      </Typography>
-                      <Typography
-                        variant="caption"
-                        sx={{ color: "#707880", fontWeight: 500 }}
-                      >
-                        Port: {log.port}
-                      </Typography>
-                    </Box>
 
-                    <Typography
-                      variant="caption"
-                      sx={{ color: "#707880", display: "block" }}
-                    >
-                      {log.time}
-                    </Typography>
-                  </Box>
-                </Box>
-                <IconButton
-                  size="small"
-                  onClick={() => handleDeleteLog(log.id)}
-                  sx={{ color: "#d32f2f", alignSelf: "flex-start" }}
-                >
-                  <DeleteIcon fontSize="small" />
-                </IconButton>
-              </Box>
-              <Box
+            {/* Trong Khối Trên của App.jsx */}
+            {activeTab === 4 && (
+              <HistoryManager />
+            )}
+          </Box>
+        </Paper>
+
+        {/* --- KHỐI DƯỚI: LỊCH SỬ KẾT NỐI (Chuyển từ cột phải sang) --- */}
+        {/* --- KHỐI DƯỚI: LỊCH SỬ KẾT NỐI --- */}
+        <Paper
+          elevation={2}
+          sx={{
+            // flex: 1, // SỬA: Xóa flex: 1 để khối này không chiếm toàn bộ màn hình, giúp cố định chiều cao
+            borderRadius: 2,
+            p: 2,
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+            minHeight: "200px", // <--- THÊM DÒNG NÀY để tạo khung cố định lúc mới vào
+            bgcolor: "#fff"
+          }}
+        >
+          <Typography variant="h6" sx={{ mb: 1, fontWeight: "bold", px: 1 }}>
+            Lịch sử kết nối & Trạng thái Backup
+          </Typography>
+          <Divider />
+
+          <List
+            sx={{
+              px: 1,
+              mt: 1,
+              // flex: 1, // SỬA: Bỏ flex: 1 ở đây
+
+              // THÊM: Giới hạn chiều cao cho khoảng 5 dòng (mỗi dòng khoảng 110-120px)
+              // Con số 580px là chiều cao hợp lý để hiện 5 bản ghi và 1 phần của bản ghi thứ 6 (để báo hiệu còn scroll)
+              maxHeight: "580px",
+
+              overflowY: "auto", // Tự động hiện thanh cuộn khi quá 5 dòng
+              display: "grid",
+              gridTemplateColumns: "1fr",
+              gap: 2,
+
+              // TÙY CHỈNH THANH CUỘN (Scrollbar) cho đẹp hơn
+              "&::-webkit-scrollbar": {
+                width: "6px",
+              },
+              "&::-webkit-scrollbar-thumb": {
+                backgroundColor: "#e0e4e8",
+                borderRadius: "10px",
+              },
+              "&::-webkit-scrollbar-track": {
+                backgroundColor: "transparent",
+              }
+            }}
+          >
+            {connectionLogs.map((log) => (
+              <ListItem
+                key={log.id}
                 sx={{
+                  borderRadius: "12px",
+                  border: "1px solid #e0e4e8",
+                  p: 2,
                   display: "flex",
-                  justifyContent: "flex-end",
-                  gap: 1,
-                  mt: 1,
+                  flexDirection: "column",
+                  alignItems: "stretch",
+                  bgcolor: "#fff",
+                  width: "100%",
+                  boxSizing: "border-box",
+                  boxShadow: "0 2px 4px rgba(0,0,0,0.05)",
+                  // Thêm hiệu ứng hover nhẹ để giao diện sinh động hơn
+                  "&:hover": {
+                    borderColor: "#1976d2",
+                    boxShadow: "0 4px 8px rgba(25, 118, 210, 0.1)",
+                    transition: "all 0.3s ease"
+                  }
                 }}
               >
-                <Button
-                  variant="outlined"
-                  size="small"
-                  disabled={backingUpId !== null} // Vô hiệu hóa khi có bất kỳ tiến trình nào đang chạy
-                  onClick={() => handleCheckVersion(log)}
-                >
-                  CHECK
-                </Button>
-
-                <Button
-                  variant="contained"
-                  size="small"
-                  disabled={backingUpId !== null && backingUpId !== log.id} // Chỉ vô hiệu hóa các nút KHÔNG phải đang backup
-                  onClick={() => handleOpenBackupConfig(log, true)}
-                  sx={{
-                    // 1. LOGIC THAY ĐỔI MÀU NỀN
-                    // Nếu ID này đang được backup -> Hiện Gradient Tím Xanh
-                    // Nếu không -> Hiện màu tím tĩnh (hoặc xám nếu bản ghi cũ bị lỗi)
-                    backgroundImage: backingUpId === log.id
-                      ? "linear-gradient(45deg, #2196f3 30%, #a200d6 90%)"
-                      : (log.success ? "linear-gradient(to right, #7b1fa2, #7b1fa2)" : "#b0bec5"),
-
-                    // Hiệu ứng chuyển màu mượt mà khi bắt đầu backup
-                    transition: "all 0.4s ease",
-                    color: "#fff",
-                    minWidth: "100px",
-                    position: "relative",
-                    overflow: "hidden",
-                    fontWeight: "bold",
-                    boxShadow: backingUpId === log.id
-                      ? "0 4px 15px 2px rgba(33, 150, 243, .4)"
-                      : "none",
-                  }}
-                >
-                  {/* Hiển thị Nội dung chữ hoặc Phần trăm */}
-                  <Box sx={{ zIndex: 2, display: "flex", alignItems: "center", gap: 1 }}>
-                    {backingUpId === log.id ? (
-                      <>
-                        <CircularProgress size={14} color="inherit" thickness={5} />
-                        <Typography variant="caption" sx={{ fontWeight: "bold" }}>
-                          {uploadProgress}%
+                {/* PHẦN 1: THÔNG TIN SERVER & TRẠNG THÁI */}
+                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 1 }}>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+                    <Box sx={{ p: 1.5, borderRadius: "10px", bgcolor: log.success ? "#e8f5e9" : "#ffebee" }}>
+                      {log.success ? <CheckCircleIcon color="success" /> : <ErrorIcon color="error" />}
+                    </Box>
+                    <Box>
+                      <Typography variant="h6" sx={{ fontWeight: 800, fontSize: "1.1rem", lineHeight: 1.2 }}>
+                        {log.server}
+                      </Typography>
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mt: 0.5 }}>
+                        <Typography variant="caption" sx={{ textTransform: "uppercase", fontWeight: 800, color: log.dbType === "mongodb" ? "#4db33d" : "#1976d2" }}>
+                          {log.dbType || "MSSQL"}
                         </Typography>
-                      </>
-                    ) : (
-                      "BACKUP"
-                    )}
+                        <Typography variant="caption" sx={{ color: "#9e9e9e" }}>|</Typography>
+                        <Typography variant="caption" sx={{ color: "#607d8b", fontWeight: 600 }}>Port: {log.port}</Typography>
+                        <Typography variant="caption" sx={{ color: "#9e9e9e" }}>|</Typography>
+                        <Typography variant="caption" sx={{ color: "#9e9e9e" }}>{log.time}</Typography>
+                      </Box>
+                    </Box>
                   </Box>
 
-                  {/* 2. THANH PROGRESS CHẠY NGẦM Ở DƯỚI (Vẫn giữ Gradient lấp lánh) */}
-                  {backingUpId === log.id && (
-                    <LinearProgress
-                      variant="determinate"
-                      value={uploadProgress}
-                      sx={{
-                        position: "absolute",
-                        bottom: 0,
-                        left: 0,
-                        right: 0,
-                        height: "100%", // Phủ toàn bộ chiều cao nút để tạo hiệu ứng làm đầy
-                        bgcolor: "transparent",
-                        opacity: 0.3, // Độ trong suốt để vẫn thấy được màu Gradient của nút ở dưới
-                        "& .MuiLinearProgress-bar": {
-                          backgroundImage: "linear-gradient(90deg, #ffeb3b 0%, #fff 50%, #ffeb3b 100%)",
-                        }
-                      }}
-                    />
-                  )}
-                </Button>
-              </Box>
-            </ListItem>
-          ))}
-        </List>
-      </Paper>
+                  <IconButton size="small" onClick={() => handleDeleteLog(log.id)} sx={{ color: "#d32f2f", "&:hover": { bgcolor: "#fff1f1" } }}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+
+                {/* PHẦN 2: CÁC NÚT ĐIỀU KHIỂN (Căn phải) */}
+                <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 2, mt: 1, pt: 1, borderTop: "1px dashed #eee" }}>
+                  <Button
+                    variant="outlined"
+                    size="medium"
+                    disabled={backingUpId !== null}
+                    onClick={() => handleCheckVersion(log)}
+                    sx={{ borderRadius: "8px", px: 3, textTransform: "none", fontWeight: "bold" }}
+                  >
+                    CHECK
+                  </Button>
+
+                  <Button
+                    variant="contained"
+                    size="medium"
+                    disabled={backingUpId !== null && backingUpId !== log.id}
+                    onClick={() => handleOpenBackupConfig(log, true)}
+                    sx={{
+                      borderRadius: "8px",
+                      px: 4,
+                      textTransform: "none",
+                      fontWeight: "bold",
+                      minWidth: "140px",
+                      backgroundImage: backingUpId === log.id
+                        ? "linear-gradient(45deg, #2196f3 30%, #a200d6 90%)"
+                        : (log.success ? "linear-gradient(to right, #7b1fa2, #9c27b0)" : "#b0bec5"),
+                      transition: "all 0.4s ease",
+                      position: "relative",
+                      overflow: "hidden",
+                      boxShadow: log.success ? "0 4px 10px rgba(123, 31, 162, 0.3)" : "none"
+                    }}
+                  >
+                    <Box sx={{ zIndex: 2, display: "flex", alignItems: "center", gap: 1 }}>
+                      {backingUpId === log.id ? (
+                        <>
+                          <CircularProgress size={16} color="inherit" thickness={5} />
+                          <Typography variant="body2" sx={{ fontWeight: "bold" }}>{uploadProgress}%</Typography>
+                        </>
+                      ) : ("BẮT ĐẦU BACKUP")}
+                    </Box>
+
+                    {backingUpId === log.id && (
+                      <LinearProgress
+                        variant="determinate"
+                        value={uploadProgress}
+                        sx={{
+                          position: "absolute", bottom: 0, left: 0, right: 0, height: "100%",
+                          bgcolor: "transparent", opacity: 0.2,
+                          "& .MuiLinearProgress-bar": { backgroundImage: "linear-gradient(90deg, #ffeb3b 0%, #fff 50%, #ffeb3b 100%)" }
+                        }}
+                      />
+                    )}
+                  </Button>
+                </Box>
+              </ListItem>
+            ))}
+          </List>
+        </Paper>
+      </Box>
+
+
+
+
+
 
       {/* SNACKBAR THÔNG BÁO */}
       <Snackbar
