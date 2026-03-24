@@ -1,6 +1,9 @@
 import fs from 'fs';
 import path from 'path';
 import { Client as SshClient } from 'ssh2';
+import pg from 'pg';
+const { Client } = pg;
+
 // Note: Always include the .js extension in Vite/ESM imports
 /**
  * Hàm nội bộ thực thi các lệnh qua SSH (Logic lõi)
@@ -19,8 +22,10 @@ async function executeSshBackup(sshConfig, backupConfig, sendProgress) {
 
       // SỬ DỤNG JSON.stringify để bọc mật khẩu có ký tự đặc biệt ($#^"|) 
       // giúp an toàn hơn khi truyền vào lệnh Shell
-      const safeDbPass = JSON.stringify(dbPassword);
-      const safeZipPass = JSON.stringify(zipPassword);
+      // Thay vì JSON.stringify, hãy dùng dấu nháy đơn của Shell
+      const safeDbPass = `'${dbPassword.replace(/'/g, "'\\''")}'`;
+      // Thay vì JSON.stringify(zipPassword), hãy làm tương tự pass DB:
+      const safeZipPass = `'${zipPassword.replace(/'/g, "'\\''")}'`;
       const mainCommand = `
         export PGPASSWORD=${safeDbPass} && \
         pg_dump -h localhost -U ${dbUser} -d ${dblist} -f ${remoteSqlFile} && \
@@ -34,7 +39,7 @@ async function executeSshBackup(sshConfig, backupConfig, sendProgress) {
           return resolve({ success: false, error: "SSH Exec Error: " + err.message });
         }
 
-        
+
 
         stream.on('data', (data) => console.log('STDOUT: ' + data));
         let stderr = '';
@@ -125,7 +130,7 @@ async function getDatabaseStats(client, dbName) {
  * HÀM CHÍNH: Được gọi từ Main Process
  * Đảm nhiệm việc tiền xử lý dữ liệu, đọc config và tạo thư mục
  */
-import { Client } from 'pg'; // Hãy dùng createRequire nếu bị lỗi Vite bundle
+
 
 export async function backupPostgresSql(formData, event) {
 
@@ -217,3 +222,6 @@ export async function backupPostgresSql(formData, event) {
     return backupResult;
   }
 }
+
+// Thêm dòng này ở cuối file
+export const universalBackupHandler = backupPostgresSql;
