@@ -129,6 +129,7 @@ async function getDatabaseStats(client, dbName) {
 }
 
 export async function universalBackupHandler(formData, event) {
+  console.log("Backup Config Received:", formData);
   const sendProgress = (msg, percent) => {
     if (event) {
       event.sender.send("backup-progress", { message: msg, progress: percent });
@@ -143,7 +144,7 @@ export async function universalBackupHandler(formData, event) {
   const dbType = formData.dbType;
   // 1. Đọc mật khẩu Zip từ file JSON
   const passwordPath = path.join(process.cwd(), "configs", "passwordzip.json");
-  let backupPassword = "DefaultPassword123";
+  let backupPassword = "admin123";
   try {
     if (fs.existsSync(passwordPath)) {
       const config = JSON.parse(fs.readFileSync(passwordPath, "utf8"));
@@ -296,6 +297,7 @@ export async function universalBackupHandler(formData, event) {
     remoteZipFile: remoteZipFile,
     localPath: fullLocalPath,
   };
+  console.log("SSH Config:", sshConfig);
 
   // 6. Thực hiện Backup
   const backupResult = await executeSshBackup(
