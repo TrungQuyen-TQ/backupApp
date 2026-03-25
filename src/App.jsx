@@ -66,7 +66,6 @@ function App() {
     user: "root",
     password: '"04+Shl6|$#^"1@#qe06',
     localPath: "C:\\db_backup",
-    // Database Info (Mới)
     dbType: "sqlserver",
     port: "1433",
     dbUser: "sa", // Username riêng cho SQL
@@ -297,14 +296,6 @@ function App() {
           showMsg(`Lỗi upload Drive ${email}: ${driveResult.error}`, "error");
         }
       }
-
-      if (overallSuccess) {
-        await window.electronAPI.deleteTempFiles(filesToUpload);
-        showMsg(
-          `Hoàn tất đẩy file lên ${targetEmails.length} Drive.`,
-          "success",
-        );
-      }
     } catch (err) {
       showMsg("Lỗi hệ thống: " + err.message, "error");
     } finally {
@@ -314,11 +305,23 @@ function App() {
   };
 
   const handleBrowseFolder = async () => {
-  const path = await window.electronAPI.selectFolder();
-  if (path) {
-    setFormData({ ...formData, localPath: path });
-  }
-};
+    const path = await window.electronAPI.selectFolder();
+    if (path) {
+      setFormData((prev) => ({
+        ...prev,
+        localPath: path,
+      }));
+    }
+    if (path) {
+      const newData = {
+        ...formData,
+        localPath: path,
+      };
+      console.log("New data:", newData);
+
+      setFormData(newData);
+    }
+  };
 
   const handleOpenBackupConfig = async (log, showModal = true) => {
     setSelectedLogForBackup(log);
@@ -346,7 +349,7 @@ function App() {
           console.log(`Postgres ${type} Databases:`, result.databases);
           setDbList(result.databases);
           break;
-        case "mssql":
+        case "sqlserver":
         default:
           // Mặc định là mssql hoặc nếu bạn vẫn muốn dùng hàm cũ thì gọi trực tiếp
           console.log("MSSQL Log Config:", log);
@@ -363,15 +366,30 @@ function App() {
   };
 
   const handleBackupMultipleDbs = async () => {
-    if (selectedDbs.length === 0)
-      return alert("Vui lòng chọn ít nhất 1 database!");
-    setShowInputDbModal(false);
-    for (const dbName of selectedDbs) {
-      const currentConfig = { ...selectedLogForBackup, database: dbName };
-      await handleBackupSpecificDb(currentConfig);
-    }
-    setSelectedDbs([]);
-  };
+  if (selectedDbs.length === 0)
+    return alert("Vui lòng chọn ít nhất 1 database!");
+
+  setShowInputDbModal(false);
+
+  const limit = 2; // 🔥 số job chạy song song
+
+  for (let i = 0; i < selectedDbs.length; i += limit) {
+    const batch = selectedDbs.slice(i, i + limit);
+
+    await Promise.all(
+      batch.map((dbName) => {
+        const currentConfig = {
+          ...formData, // 🔥 luôn lấy mới
+          database: dbName,
+        };
+
+        return handleBackupSpecificDb(currentConfig);
+      })
+    );
+  }
+
+  setSelectedDbs([]);
+};
 
   const handleClose = (event, reason) => {
     if (reason === "clickaway") return; // Tránh đóng khi click ra ngoài nếu muốn
@@ -395,13 +413,6 @@ function App() {
         gap: 2,
       }}
     >
-      <UploadPopup
-        open={showUploadPopup}
-        onClose={() => setShowUploadPopup(false)}
-        onUpload={handleUploadFiles}
-        showMsg={showMsg}
-      />
-
       {/* MODAL 1: MULTIPLE SELECT */}
       <Modal open={showInputDbModal} onClose={() => setShowInputDbModal(false)}>
         <Box
@@ -429,20 +440,18 @@ function App() {
             sx={{ mt: 2, mb: 1 }}
             InputProps={{
               endAdornment: (
-                
-                  <IconButton
-                    onClick={handleBrowseFolder}
-                    edge="end"
-                    color="primary"
-                  >
-                    <FolderOpenIcon />
-                  </IconButton>
-              
+                <IconButton
+                  onClick={handleBrowseFolder}
+                  edge="end"
+                  color="primary"
+                >
+                  <FolderOpenIcon />
+                </IconButton>
               ),
             }}
             helperText="Bấm vào biểu tượng thư mục để chọn nơi lưu file"
           />
-          
+
           {isFetchingDbs ? (
             <Box
               sx={{
@@ -656,13 +665,20 @@ function App() {
             )}
 
             {activeTab === 2 && (
-              <CloudBackup
-                handleOpenUploadPopup={handleOpenUploadPopup}
-                isUploading={isUploading}
-                uploadProgress={uploadProgress}
-                uploadSpeed={uploadSpeed}
-                isLoading={isLoading}
-              />
+              <Box>
+                <UploadPopup
+                  onUpload={handleUploadFiles}
+                  showMsg={showMsg}
+                  formdata={formData}
+                />
+                <CloudBackup
+                  handleOpenUploadPopup={handleOpenUploadPopup}
+                  isUploading={isUploading}
+                  uploadProgress={uploadProgress}
+                  uploadSpeed={uploadSpeed}
+                  isLoading={isLoading}
+                />
+              </Box>
             )}
 
             {/* Trong App.jsx, đoạn Khối Trên */}
