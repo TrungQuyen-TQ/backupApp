@@ -27,7 +27,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("create-sql-backup", dbConfig),
 
   // Lấy danh sách file trong thư mục temp
-  getTempFiles: () => ipcRenderer.invoke("get-temp-files"),
+  getTempFiles: (localPath) => ipcRenderer.invoke("get-temp-files", localPath),
 
   uploadToDrive: (data) => ipcRenderer.invoke("upload-to-drive", data),
   onUploadProgress: (callback) => {
