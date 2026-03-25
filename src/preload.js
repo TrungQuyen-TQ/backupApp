@@ -5,7 +5,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   saveBackupHistory: (data) => ipcRenderer.invoke("save-backup-history", data),
   saveUploadHistory: (data) => ipcRenderer.invoke("save-upload-history", data),
   getHistory: (type) => ipcRenderer.invoke("get-history", type),
-
+  selectFolder: () => ipcRenderer.invoke('open-directory-dialog'),
 
 
   // preload.js
