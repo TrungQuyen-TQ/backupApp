@@ -678,139 +678,189 @@ function App() {
           <Divider />
 
           <List
-            sx={{
-              px: 1,
-              mt: 1,
-              // flex: 1, // SỬA: Bỏ flex: 1 ở đây
-
-              // THÊM: Giới hạn chiều cao cho khoảng 5 dòng (mỗi dòng khoảng 110-120px)
-              // Con số 580px là chiều cao hợp lý để hiện 5 bản ghi và 1 phần của bản ghi thứ 6 (để báo hiệu còn scroll)
-              maxHeight: "580px",
-
-              overflowY: "auto", // Tự động hiện thanh cuộn khi quá 5 dòng
-              display: "grid",
-              gridTemplateColumns: "1fr",
-              gap: 2,
-
-              // TÙY CHỈNH THANH CUỘN (Scrollbar) cho đẹp hơn
-              "&::-webkit-scrollbar": {
-                width: "6px",
-              },
-              "&::-webkit-scrollbar-thumb": {
-                backgroundColor: "#e0e4e8",
-                borderRadius: "10px",
-              },
-              "&::-webkit-scrollbar-track": {
-                backgroundColor: "transparent",
-              }
+  sx={{
+    px: 1,
+    mt: 1,
+    maxHeight: "580px",
+    overflowY: "auto",
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: 2.5, // Tăng khoảng cách giữa các thẻ một chút cho thoáng
+    "&::-webkit-scrollbar": { width: "6px" },
+    "&::-webkit-scrollbar-thumb": { 
+      backgroundColor: "#d1d9e0", 
+      borderRadius: "10px" 
+    },
+    "&::-webkit-scrollbar-track": { backgroundColor: "transparent" }
+  }}
+>
+  {connectionLogs.map((log) => (
+    <ListItem
+      key={log.id}
+      sx={{
+        borderRadius: "16px", // Bo góc tròn hơn nhìn hiện đại
+        border: "1px solid #f0f2f5",
+        p: 0, // Reset padding để tùy chỉnh các Box bên trong
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "stretch",
+        bgcolor: "#fff",
+        width: "100%",
+        boxSizing: "border-box",
+        transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
+        boxShadow: "0 2px 12px rgba(0,0,0,0.03)",
+        overflow: "hidden",
+        "&:hover": {
+          borderColor: "#1976d2",
+          transform: "translateY(-4px)", // Nhấc nhẹ thẻ lên khi hover
+          boxShadow: "0 12px 24px rgba(25, 118, 210, 0.12)",
+          "& .delete-btn": { opacity: 1 } // Hiện nút xóa khi di chuột vào
+        }
+      }}
+    >
+      {/* PHẦN 1: HEADER CỦA THẺ (THÔNG TIN CHÍNH) */}
+      <Box sx={{ p: 2.5, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 2.5 }}>
+          {/* Avatar Icon với nền mờ */}
+          <Box 
+            sx={{ 
+              width: 48, 
+              height: 48, 
+              borderRadius: "12px", 
+              display: "flex", 
+              alignItems: "center", 
+              justifyContent: "center",
+              bgcolor: log.success ? "#e8f5e9" : "#fff1f0",
+              color: log.success ? "#2e7d32" : "#d32f2f",
+              transition: "0.3s"
             }}
           >
-            {connectionLogs.map((log) => (
-              <ListItem
-                key={log.id}
-                sx={{
-                  borderRadius: "12px",
-                  border: "1px solid #e0e4e8",
-                  p: 2,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "stretch",
-                  bgcolor: "#fff",
-                  width: "100%",
-                  boxSizing: "border-box",
-                  boxShadow: "0 2px 4px rgba(0,0,0,0.05)",
-                  // Thêm hiệu ứng hover nhẹ để giao diện sinh động hơn
-                  "&:hover": {
-                    borderColor: "#1976d2",
-                    boxShadow: "0 4px 8px rgba(25, 118, 210, 0.1)",
-                    transition: "all 0.3s ease"
-                  }
-                }}
-              >
-                {/* PHẦN 1: THÔNG TIN SERVER & TRẠNG THÁI */}
-                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 1 }}>
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-                    <Box sx={{ p: 1.5, borderRadius: "10px", bgcolor: log.success ? "#e8f5e9" : "#ffebee" }}>
-                      {log.success ? <CheckCircleIcon color="success" /> : <ErrorIcon color="error" />}
-                    </Box>
-                    <Box>
-                      <Typography variant="h6" sx={{ fontWeight: 800, fontSize: "1.1rem", lineHeight: 1.2 }}>
-                        {log.server}
-                      </Typography>
-                      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mt: 0.5 }}>
-                        <Typography variant="caption" sx={{ textTransform: "uppercase", fontWeight: 800, color: log.dbType === "mongodb" ? "#4db33d" : "#1976d2" }}>
-                          {log.dbType || "MSSQL"}
-                        </Typography>
-                        <Typography variant="caption" sx={{ color: "#9e9e9e" }}>|</Typography>
-                        <Typography variant="caption" sx={{ color: "#607d8b", fontWeight: 600 }}>Port: {log.port}</Typography>
-                        <Typography variant="caption" sx={{ color: "#9e9e9e" }}>|</Typography>
-                        <Typography variant="caption" sx={{ color: "#9e9e9e" }}>{log.time}</Typography>
-                      </Box>
-                    </Box>
-                  </Box>
+            {log.success ? <CheckCircleIcon /> : <ErrorIcon />}
+          </Box>
 
-                  <IconButton size="small" onClick={() => handleDeleteLog(log.id)} sx={{ color: "#d32f2f", "&:hover": { bgcolor: "#fff1f1" } }}>
-                    <DeleteIcon fontSize="small" />
-                  </IconButton>
-                </Box>
+          <Box>
+            <Typography variant="subtitle1" sx={{ fontWeight: 800, color: "#1a2027", letterSpacing: "-0.01em" }}>
+              {log.server}
+            </Typography>
+            
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 0.5 }}>
+              <Chip 
+                label={log.dbType || "MSSQL"} 
+                size="small" 
+                sx={{ 
+                  height: 20, 
+                  fontSize: "0.65rem", 
+                  fontWeight: 900, 
+                  bgcolor: log.dbType === "mongodb" ? "#e6f4ea" : "#e3f2fd",
+                  color: log.dbType === "mongodb" ? "#1e8e3e" : "#1976d2",
+                  borderRadius: "6px"
+                }} 
+              />
+              <Typography variant="caption" sx={{ color: "#94a3b8", fontWeight: 600 }}>
+                Port: {log.port}
+              </Typography>
+              <Typography variant="caption" sx={{ color: "#cbd5e1" }}>•</Typography>
+              <Typography variant="caption" sx={{ color: "#94a3b8" }}>
+                {log.time}
+              </Typography>
+            </Box>
+          </Box>
+        </Box>
 
-                {/* PHẦN 2: CÁC NÚT ĐIỀU KHIỂN (Căn phải) */}
-                <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 2, mt: 1, pt: 1, borderTop: "1px dashed #eee" }}>
-                  <Button
-                    variant="outlined"
-                    size="medium"
-                    disabled={backingUpId !== null}
-                    onClick={() => handleCheckVersion(log)}
-                    sx={{ borderRadius: "8px", px: 3, textTransform: "none", fontWeight: "bold" }}
-                  >
-                    CHECK
-                  </Button>
+        <IconButton 
+          className="delete-btn"
+          size="small" 
+          onClick={() => handleDeleteLog(log.id)} 
+          sx={{ 
+            color: "#d32f2f", 
+            opacity: 0, // Mặc định ẩn, hiện khi hover
+            transition: "0.3s",
+            bgcolor: "#fff1f0",
+            "&:hover": { bgcolor: "#ffccc7" } 
+          }}
+        >
+          <DeleteIcon fontSize="small" />
+        </IconButton>
+      </Box>
 
-                  <Button
-                    variant="contained"
-                    size="medium"
-                    disabled={backingUpId !== null && backingUpId !== log.id}
-                    onClick={() => handleOpenBackupConfig(log, true)}
-                    sx={{
-                      borderRadius: "8px",
-                      px: 4,
-                      textTransform: "none",
-                      fontWeight: "bold",
-                      minWidth: "140px",
-                      backgroundImage: backingUpId === log.id
-                        ? "linear-gradient(45deg, #2196f3 30%, #a200d6 90%)"
-                        : (log.success ? "linear-gradient(to right, #7b1fa2, #9c27b0)" : "#b0bec5"),
-                      transition: "all 0.4s ease",
-                      position: "relative",
-                      overflow: "hidden",
-                      boxShadow: log.success ? "0 4px 10px rgba(123, 31, 162, 0.3)" : "none"
-                    }}
-                  >
-                    <Box sx={{ zIndex: 2, display: "flex", alignItems: "center", gap: 1 }}>
-                      {backingUpId === log.id ? (
-                        <>
-                          <CircularProgress size={16} color="inherit" thickness={5} />
-                          <Typography variant="body2" sx={{ fontWeight: "bold" }}>{uploadProgress}%</Typography>
-                        </>
-                      ) : ("BẮT ĐẦU BACKUP")}
-                    </Box>
+      {/* PHẦN 2: THANH ĐIỀU KHIỂN (FOOTER THẺ) */}
+      <Box 
+        sx={{ 
+          display: "flex", 
+          justifyContent: "flex-end", 
+          gap: 1.5, 
+          p: 1.5, 
+          bgcolor: "#fcfcfd", // Màu nền khác một chút để tách biệt
+          borderTop: "1px solid #f0f2f5" 
+        }}
+      >
+        <Button
+          variant="text"
+          size="small"
+          disabled={backingUpId !== null}
+          onClick={() => handleCheckVersion(log)}
+          sx={{ 
+            borderRadius: "8px", 
+            px: 2, 
+            color: "#475467",
+            fontWeight: 700,
+            textTransform: "none",
+            "&:hover": { bgcolor: "#f2f4f7" }
+          }}
+        >
+          Kiểm tra
+        </Button>
 
-                    {backingUpId === log.id && (
-                      <LinearProgress
-                        variant="determinate"
-                        value={uploadProgress}
-                        sx={{
-                          position: "absolute", bottom: 0, left: 0, right: 0, height: "100%",
-                          bgcolor: "transparent", opacity: 0.2,
-                          "& .MuiLinearProgress-bar": { backgroundImage: "linear-gradient(90deg, #ffeb3b 0%, #fff 50%, #ffeb3b 100%)" }
-                        }}
-                      />
-                    )}
-                  </Button>
-                </Box>
-              </ListItem>
-            ))}
-          </List>
+        <Button
+          variant="contained"
+          size="small"
+          disabled={backingUpId !== null && backingUpId !== log.id}
+          onClick={() => handleOpenBackupConfig(log, true)}
+          sx={{
+            borderRadius: "10px",
+            px: 3,
+            textTransform: "none",
+            fontWeight: 800,
+            fontSize: "0.8rem",
+            minWidth: "160px",
+            boxShadow: "none",
+            backgroundImage: backingUpId === log.id
+              ? "linear-gradient(45deg, #2196f3 30%, #a200d6 90%)"
+              : (log.success ? "linear-gradient(135deg, #1976d2 0%, #1565c0 100%)" : "#98a2b3"),
+            transition: "all 0.4s ease",
+            position: "relative",
+            overflow: "hidden",
+            "&:hover": {
+              boxShadow: log.success ? "0 4px 12px rgba(25, 118, 210, 0.35)" : "none",
+              filter: "brightness(1.1)"
+            }
+          }}
+        >
+          <Box sx={{ zIndex: 2, display: "flex", alignItems: "center", gap: 1 }}>
+            {backingUpId === log.id ? (
+              <>
+                <CircularProgress size={16} color="inherit" thickness={6} />
+                <Typography variant="caption" sx={{ fontWeight: "900" }}>{uploadProgress}%</Typography>
+              </>
+            ) : ("BackUp")}
+          </Box>
+
+          {backingUpId === log.id && (
+            <LinearProgress
+              variant="determinate"
+              value={uploadProgress}
+              sx={{
+                position: "absolute", bottom: 0, left: 0, right: 0, height: "100%",
+                bgcolor: "transparent", opacity: 0.15,
+                "& .MuiLinearProgress-bar": { backgroundColor: "#fff" }
+              }}
+            />
+          )}
+        </Button>
+      </Box>
+    </ListItem>
+  ))}
+</List>
         </Paper>
       </Box>
 
