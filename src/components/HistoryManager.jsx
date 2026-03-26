@@ -124,8 +124,21 @@ export const HistoryManager = () => {
                         fontSize: '0.75rem', color: '#475569', border: '1px solid #f1f5f9'
                       }}
                     >
-                      {subTab === 0 ? (
+                      {/* {subTab === 0 ? (
                         <><strong>File:</strong> {item.fileName}</>
+                      ) : (
+                        <><strong>Đích:</strong> {item.targetEmail}</>
+                      )} */}
+
+
+                      {subTab === 0 ? (
+                        <>
+                          <div><strong>File:</strong> {item.fileName}</div>
+                          {/* THÊM DÒNG NÀY ĐỂ HIỂN THỊ ĐƯỜNG DẪN LƯU TRỮ */}
+                          <div style={{ marginTop: '4px', color: '#1976d2' }}>
+                            <strong>Đường dẫn:</strong> {item.localPath || "Mặc định"}
+                          </div>
+                        </>
                       ) : (
                         <><strong>Đích:</strong> {item.targetEmail}</>
                       )}

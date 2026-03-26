@@ -5,7 +5,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   saveBackupHistory: (data) => ipcRenderer.invoke("save-backup-history", data),
   saveUploadHistory: (data) => ipcRenderer.invoke("save-upload-history", data),
   getHistory: (type) => ipcRenderer.invoke("get-history", type),
-
+  selectFolder: () => ipcRenderer.invoke('open-directory-dialog'),
 
 
   // preload.js
@@ -27,7 +27,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("create-sql-backup", dbConfig),
 
   // Lấy danh sách file trong thư mục temp
-  getTempFiles: () => ipcRenderer.invoke("get-temp-files"),
+  getTempFiles: (localPath) => ipcRenderer.invoke("get-temp-files", localPath),
 
   uploadToDrive: (data) => ipcRenderer.invoke("upload-to-drive", data),
   onUploadProgress: (callback) => {

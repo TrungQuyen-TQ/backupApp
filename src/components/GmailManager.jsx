@@ -77,7 +77,7 @@ export const GmailManager = ({ showMsg }) => {
       <ListItem 
         key={index} 
         sx={{ 
-          mt: 1, // Tạo khoảng cách giữa các card
+          mt: 1 , // Tạo khoảng cách giữa các card
           mb: 1.5, // Tạo khoảng cách giữa các card
           borderRadius: '12px',
           border: '1px solid #e0e4e8',

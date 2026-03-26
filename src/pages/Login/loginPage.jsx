@@ -9,9 +9,10 @@ import {
   IconButton,
   Stack,
   FormControl,
-  FormLabel
+  FormLabel,
+  Paper
 } from '@mui/material';
-import { Visibility, VisibilityOff } from '@mui/icons-material';
+import { Visibility, VisibilityOff, LockOutlined, PersonOutline } from '@mui/icons-material';
 
 const LoginLayout = ({ onLogin }) => {
   const [showPassword, setShowPassword] = useState(false);
@@ -22,97 +23,156 @@ const LoginLayout = ({ onLogin }) => {
 
   const handleSubmit = (event) => {
     event.preventDefault();
-    onLogin(username, password);
+    if (username.trim()) {
+      onLogin(username, password);
+    }
   };
 
   return (
-    <Container maxWidth="sm">
-      <Box 
-        sx={{ 
-          marginTop: 8, 
-          display: 'flex', 
-          flexDirection: 'column', 
-          alignItems: 'center',
-          boxShadow: 3,
-          p: 4,
-          borderRadius: 2
-        }}
-      >
-        {/* Logo Placeholder */}
-        <Box sx={{ mb: 4, width: '30%', textAlign: 'center' }}>
-          
-        </Box>
+    <Box
+      sx={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        // Nền Gradient hiện đại cho Desktop App
+        background: 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 50%, #93c5fd 100%)',
+        p: 2
+      }}
+    >
+      <Container maxWidth="xs">
+        <Paper
+          elevation={0}
+          sx={{
+            p: 5,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            borderRadius: '24px',
+            // Hiệu ứng Glassmorphism (Kính mờ)
+            background: 'rgba(255, 255, 255, 0.85)',
+            backdropFilter: 'blur(10px)',
+            border: '1px solid rgba(255, 255, 255, 0.3)',
+            boxShadow: '0 20px 40px rgba(0, 0, 0, 0.2)',
+          }}
+        >
+          {/* Logo hoặc Icon biểu tượng */}
+          <Box
+            sx={{
+              width: 60,
+              height: 60,
+              bgcolor: 'primary.main',
+              borderRadius: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              mb: 2,
+              boxShadow: '0 8px 16px rgba(59, 130, 246, 0.4)',
+              background: 'linear-gradient(45deg, #2563eb, #60a5fa)'
+            }}
+          >
+            <LockOutlined sx={{ color: '#fff', fontSize: 32 }} />
+          </Box>
 
-        <Box component="form" onSubmit={handleSubmit} noValidate sx={{ mt: 1, width: '100%' }}>
-          <Stack spacing={3}>
-            
-            {/* Trường Tên đăng nhập */}
-            <FormControl fullWidth>
-              <FormLabel sx={{ mb: 1, fontWeight: '500', color: 'text.primary' }}>
-                Tên đăng nhập
-              </FormLabel>
-              <TextField
-                required
-                fullWidth
-                id="username"
-                name="username"
-                placeholder="Nhập tên đăng nhập"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                error={username === ""} // Giả lập trạng thái lỗi như trong HTML của bạn
-                helperText={username === "" ? "Vui lòng cung cấp tên đăng nhập" : ""}
-              />
-            </FormControl>
+          <Typography variant="h4" sx={{ fontWeight: 800, color: '#1e3a8a', mb: 1 }}>
+            Chào mừng
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#64748b', mb: 4, textAlign: 'center' }}>
+            Đăng nhập để quản lý hệ thống Backup của bạn
+          </Typography>
 
-            {/* Trường Mật khẩu */}
-            <FormControl fullWidth>
-              <FormLabel sx={{ mb: 1, fontWeight: '500', color: 'text.primary' }}>
-                Mật khẩu
-              </FormLabel>
-              <TextField
+          <Box component="form" onSubmit={handleSubmit} noValidate sx={{ width: '100%' }}>
+            <Stack spacing={3}>
+              
+              <FormControl fullWidth>
+                <FormLabel sx={{ mb: 1, fontWeight: '600', color: '#1e293b', fontSize: '0.875rem' }}>
+                  Tên đăng nhập
+                </FormLabel>
+                <TextField
+                  required
+                  fullWidth
+                  placeholder="admin..."
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <PersonOutline sx={{ color: '#94a3b8' }} />
+                      </InputAdornment>
+                    ),
+                    sx: {
+                      borderRadius: '12px',
+                      bgcolor: '#f8fafc',
+                      '&:hover': { bgcolor: '#f1f5f9' },
+                    }
+                  }}
+                />
+              </FormControl>
+
+              <FormControl fullWidth>
+                <FormLabel sx={{ mb: 1, fontWeight: '600', color: '#1e293b', fontSize: '0.875rem' }}>
+                  Mật khẩu
+                </FormLabel>
+                <TextField
+                  fullWidth
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <LockOutlined sx={{ color: '#94a3b8' }} />
+                      </InputAdornment>
+                    ),
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton onClick={handleClickShowPassword} edge="end">
+                          {showPassword ? <VisibilityOff /> : <Visibility />}
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                    sx: {
+                      borderRadius: '12px',
+                      bgcolor: '#f8fafc',
+                      '&:hover': { bgcolor: '#f1f5f9' },
+                    }
+                  }}
+                />
+              </FormControl>
+
+              <Button
+                type="submit"
                 fullWidth
-                name="password"
-                type={showPassword ? 'text' : 'password'}
-                id="password"
-                placeholder="Nhập mật khẩu"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton
-                        aria-label="toggle password visibility"
-                        onClick={handleClickShowPassword}
-                        edge="end"
-                      >
-                        {showPassword ? <VisibilityOff /> : <Visibility />}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
+                variant="contained"
+                size="large"
+                sx={{ 
+                  py: 1.8,
+                  borderRadius: '12px',
+                  textTransform: 'none',
+                  fontSize: '1rem',
+                  fontWeight: 'bold',
+                  background: 'linear-gradient(45deg, #1e40af, #3b82f6)',
+                  boxShadow: '0 10px 20px rgba(59, 130, 246, 0.3)',
+                  transition: 'all 0.3s ease',
+                  '&:hover': {
+                    transform: 'translateY(-2px)',
+                    boxShadow: '0 12px 24px rgba(59, 130, 246, 0.4)',
+                    background: 'linear-gradient(45deg, #1d4ed8, #2563eb)',
+                  }
                 }}
-              />
-            </FormControl>
-
-            {/* Nút Đăng nhập */}
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              size="large"
-              sx={{ 
-                mt: 2, 
-                py: 1.5,
-                textTransform: 'none',
-                fontSize: '1rem',
-                fontWeight: 'bold'
-              }}
-            >
-              Đăng nhập
-            </Button>
-          </Stack>
-        </Box>
-      </Box>
-    </Container>
+              >
+                Đăng nhập hệ thống
+              </Button>
+            </Stack>
+          </Box>
+        </Paper>
+        
+        <Typography variant="caption" sx={{ mt: 4, display: 'block', textAlign: 'center', color: 'rgba(255,255,255,0.7)' }}>
+          © 2026 Backup System Pro. All rights reserved.
+        </Typography>
+      </Container>
+    </Box>
   );
 };
 

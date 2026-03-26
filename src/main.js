@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, ipcMain, shell,dialog } from "electron";
 import path from "node:path";
 import fs from "node:fs";
 import { google } from "googleapis";
@@ -348,43 +348,51 @@ ipcMain.handle("create-sql-backup", async (event, dbConfig) => {
   return await handler(dbConfig, event); 
 });
 
-ipcMain.handle("get-temp-files", async (event) => {
+
+ipcMain.handle("get-temp-files", async (event, localPath) => {
+  console.log("temp files path:", localPath);
   try {
-    const tempDir = path.join(process.cwd(), "src", "temp");
-    if (!fs.existsSync(tempDir)) {
-      return { success: true, files: [] };
-    }
+    const targetDir = localPath && localPath.trim() !== ""
+      ? localPath
+      : path.join(process.cwd(), "src", "temp");
+
+    if (!fs.existsSync(targetDir)) {
+  return { success: false, error: "Thư mục không tồn tại" };
+}
 
     const files = [];
+
     const readDirRecursive = (dir) => {
       const entries = fs.readdirSync(dir, { withFileTypes: true });
+
       for (const entry of entries) {
         const fullPath = path.join(dir, entry.name);
+
         if (entry.isDirectory()) {
           readDirRecursive(fullPath);
         } else {
           const stats = fs.statSync(fullPath);
           const sizeInMB = (stats.size / (1024 * 1024)).toFixed(2);
 
-          // Use relative path for UI, replace backslashes with forward slashes
-          // to make it consistent across platforms
           const relativePath = path
-            .relative(tempDir, fullPath)
+            .relative(targetDir, fullPath)
             .replace(/\\/g, "/");
 
           files.push({
             name: relativePath,
             path: fullPath,
             size: `${sizeInMB} MB`,
+            createdAt: stats.mtime, // 👉 thêm luôn cho UI cột ngày
           });
         }
       }
     };
-    readDirRecursive(tempDir);
+
+    readDirRecursive(targetDir);
 
     return { success: true, files };
   } catch (error) {
-    console.error("Lỗi đọc thư mục temp:", error);
+    console.error("Lỗi đọc thư mục:", error);
     return { success: false, error: error.message };
   }
 });
@@ -872,6 +880,19 @@ ipcMain.handle("stop-all-backups", async () => {
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message };
+  }
+});
+
+
+ipcMain.handle('open-directory-dialog', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openDirectory'] // Chỉ cho phép chọn thư mục
+  });
+
+  if (result.canceled) {
+    return null;
+  } else {
+    return result.filePaths[0]; // Trả về đường dẫn thư mục đầu tiên được chọn
   }
 });
 
