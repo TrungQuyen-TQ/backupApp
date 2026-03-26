@@ -36,8 +36,8 @@ import { CloudBackup } from "./components/CloudBackup"; // Import component mớ
 import { useTheme } from "@mui/material/styles";
 import { GmailManager } from "./components/GmailManager"; // Đảm bảo đúng đường dẫn file bạn vừa tạo
 import { HistoryManager } from "./components/HistoryManager"; // Đảm bảo đúng đường dẫn file bạn vừa tạo
-import FolderOpenIcon from "@mui/icons-material/FolderOpen"; // <--- Thêm icon thư mục
-
+import FolderOpenIcon from "@mui/icons-material/FolderOpen";
+import LoginLayout from "./pages/Login/loginPage";
 const ITEM_HEIGHT = 48;
 const ITEM_PADDING_TOP = 8;
 const MenuProps = {
@@ -86,7 +86,7 @@ function App() {
 
   const [showUploadPopup, setShowUploadPopup] = useState(false);
 
-  const [isLoggedIn, setIsLoggedIn] = useState(true);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   // Quản lý trạng thái thông báo (Snackbar)
   const [snackbar, setSnackbar] = useState({
@@ -404,6 +404,11 @@ function App() {
   };
 
   return (
+    <Box sx={{ minHeight: "100vh" }}>
+    {/* Kiểm tra đăng nhập ở đây */}
+    {!isLoggedIn ? (
+      <LoginLayout onLogin={handleLogin} />
+    ) : (
     <Box
       sx={{
         bgcolor: "#eaeff1",
@@ -960,6 +965,8 @@ function App() {
           {snackbar.message}
         </Alert>
       </Snackbar>
+    </Box>
+    )}
     </Box>
   );
 }
