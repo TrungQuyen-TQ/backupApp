@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell,dialog } from "electron";
+import { app, BrowserWindow, ipcMain, shell, dialog } from "electron";
 import path from "node:path";
 import fs from "node:fs";
 import { google } from "googleapis";
@@ -39,7 +39,6 @@ if (started) {
 const CONFIG_DIR = path.join(process.cwd(), "configs");
 if (!fs.existsSync(CONFIG_DIR)) fs.mkdirSync(CONFIG_DIR);
 
-
 const CREDENTIALS_PATH = path.join(CONFIG_DIR, "client_secret.json");
 const CONTACTS_PATH = path.join(CONFIG_DIR, "contacts.json");
 const TOKEN_PATH = path.join(app.getPath("userData"), "token.json");
@@ -50,8 +49,6 @@ const SCOPES = [
 
 const HISTORY_BACKUP_PATH = path.join(CONFIG_DIR, "history_backup.json");
 const HISTORY_UPLOAD_PATH = path.join(CONFIG_DIR, "history_upload.json");
-
-
 
 // Hàm phụ trợ lưu history
 // main.js - Sửa lại hàm saveHistory một chút cho Linh
@@ -69,10 +66,14 @@ const saveHistory = (filePath, data) => {
     // Đảm bảo stats luôn là một object để không bị lỗi undefined ở UI
     const secureData = {
       ...data,
-      stats: data.stats || { rowCounts: {}, shortVersion: "N/A" }
+      stats: data.stats || { rowCounts: {}, shortVersion: "N/A" },
     };
 
-    history.unshift({ ...secureData, id: Date.now(), timestamp: new Date().toLocaleString("vi-VN") });
+    history.unshift({
+      ...secureData,
+      id: Date.now(),
+      timestamp: new Date().toLocaleString("vi-VN"),
+    });
     fs.writeFileSync(filePath, JSON.stringify(history.slice(0, 100), null, 2));
     return { success: true };
   } catch (error) {
@@ -80,14 +81,17 @@ const saveHistory = (filePath, data) => {
   }
 };
 
-
-ipcMain.handle("save-backup-history", (event, data) => saveHistory(HISTORY_BACKUP_PATH, data));
-ipcMain.handle("save-upload-history", (event, data) => saveHistory(HISTORY_UPLOAD_PATH, data));
-
+ipcMain.handle("save-backup-history", (event, data) =>
+  saveHistory(HISTORY_BACKUP_PATH, data),
+);
+ipcMain.handle("save-upload-history", (event, data) =>
+  saveHistory(HISTORY_UPLOAD_PATH, data),
+);
 
 ipcMain.handle("get-history", (event, type) => {
   try {
-    const filePath = type === "backup" ? HISTORY_BACKUP_PATH : HISTORY_UPLOAD_PATH;
+    const filePath =
+      type === "backup" ? HISTORY_BACKUP_PATH : HISTORY_UPLOAD_PATH;
     if (fs.existsSync(filePath)) {
       const data = fs.readFileSync(filePath, "utf8");
       return JSON.parse(data);
@@ -98,16 +102,16 @@ ipcMain.handle("get-history", (event, type) => {
   }
 });
 
-
 // main.js
 
 // Handler xóa từng bản ghi
 ipcMain.handle("delete-history-item", async (event, { type, id }) => {
   try {
-    const filePath = type === "backup" ? HISTORY_BACKUP_PATH : HISTORY_UPLOAD_PATH;
+    const filePath =
+      type === "backup" ? HISTORY_BACKUP_PATH : HISTORY_UPLOAD_PATH;
     if (fs.existsSync(filePath)) {
       let history = JSON.parse(fs.readFileSync(filePath, "utf8"));
-      history = history.filter(item => item.id !== id);
+      history = history.filter((item) => item.id !== id);
       fs.writeFileSync(filePath, JSON.stringify(history, null, 2));
       return { success: true };
     }
@@ -120,7 +124,8 @@ ipcMain.handle("delete-history-item", async (event, { type, id }) => {
 // Handler xóa sạch lịch sử của một Tab
 ipcMain.handle("clear-all-history", async (event, type) => {
   try {
-    const filePath = type === "backup" ? HISTORY_BACKUP_PATH : HISTORY_UPLOAD_PATH;
+    const filePath =
+      type === "backup" ? HISTORY_BACKUP_PATH : HISTORY_UPLOAD_PATH;
     fs.writeFileSync(filePath, JSON.stringify([], null, 2));
     return { success: true };
   } catch (error) {
@@ -157,7 +162,7 @@ ipcMain.handle("get-drive-accounts", async () => {
 // main.js - Cập nhật hàm lấy Token theo Email
 async function getAuthenticatedClient(email) {
   // KIỂM TRA AN TOÀN: Nếu email không tồn tại hoặc không phải string
-  if (!email || typeof email !== 'string') {
+  if (!email || typeof email !== "string") {
     throw new Error(`Email xác thực không hợp lệ: ${email}`);
   }
 
@@ -165,7 +170,10 @@ async function getAuthenticatedClient(email) {
   // const SPECIFIC_TOKEN_PATH = path.join(app.getPath("userData"), `token_${safeEmail}.json`);
 
   const safeEmail = email.replace(/[^a-z0-9]/gi, "_");
-  const SPECIFIC_TOKEN_PATH = path.join(app.getPath("userData"), `token_${safeEmail}.json`);
+  const SPECIFIC_TOKEN_PATH = path.join(
+    app.getPath("userData"),
+    `token_${safeEmail}.json`,
+  );
 
   if (fs.existsSync(SPECIFIC_TOKEN_PATH)) {
     const token = JSON.parse(fs.readFileSync(SPECIFIC_TOKEN_PATH, "utf8"));
@@ -319,11 +327,14 @@ ipcMain.handle("check-database-info", async (event, dbConfig) => {
   }
 });
 
-
 // Thêm vào main.js cùng các handler khác
 ipcMain.handle("update-drive-accounts", async (event, accounts) => {
   try {
-    const DRIVE_ACCOUNTS_PATH = path.join(process.cwd(), "configs", "drive_accounts.json");
+    const DRIVE_ACCOUNTS_PATH = path.join(
+      process.cwd(),
+      "configs",
+      "drive_accounts.json",
+    );
     fs.writeFileSync(DRIVE_ACCOUNTS_PATH, JSON.stringify(accounts, null, 2));
     return { success: true };
   } catch (error) {
@@ -331,34 +342,31 @@ ipcMain.handle("update-drive-accounts", async (event, accounts) => {
   }
 });
 
-
-
 // main.js hoặc src/ipc/db-postgres.js
 ipcMain.handle("create-postgres-backup", async (event, dbConfig) => {
   // Đảm bảo truyền 'event' là tham số thứ 2
-  return await backupPostgresSql(dbConfig, event); 
+  return await backupPostgresSql(dbConfig, event);
 });
-
 
 ipcMain.handle("create-sql-backup", async (event, dbConfig) => {
   const handler = backupHandlers[dbConfig.dbType];
   if (!handler) return { success: false, error: "Unsupported type" };
 
   // THÊM: Truyền 'event' vào làm tham số thứ 2
-  return await handler(dbConfig, event); 
+  return await handler(dbConfig, event);
 });
-
 
 ipcMain.handle("get-temp-files", async (event, localPath) => {
   console.log("temp files path:", localPath);
   try {
-    const targetDir = localPath && localPath.trim() !== ""
-      ? localPath
-      : path.join(process.cwd(), "src", "temp");
+    const targetDir =
+      localPath && localPath.trim() !== ""
+        ? localPath
+        : path.join(process.cwd(), "src", "temp");
 
     if (!fs.existsSync(targetDir)) {
-  return { success: false, error: "Thư mục không tồn tại" };
-}
+      return { success: false, error: "Thư mục không tồn tại" };
+    }
 
     const files = [];
 
@@ -424,10 +432,13 @@ ipcMain.handle("upload-to-drive", async (event, { files, targetEmail }) => {
 
     // --- PHẦN SỬA ĐỂ TÍNH % CHÍNH XÁC ---
     // Tính tổng dung lượng của tất cả các file trong danh sách upload
-    const totalBatchSize = files.reduce((acc, f) => acc + fs.statSync(f.path).size, 0);
+    const totalBatchSize = files.reduce(
+      (acc, f) => acc + fs.statSync(f.path).size,
+      0,
+    );
     // Biến lưu trữ tổng dung lượng của những file đã upload xong trước đó
-    let totalUploadedBeforeCurrentFile = 0; 
-    
+    let totalUploadedBeforeCurrentFile = 0;
+
     const uploadResults = [];
 
     // 2. Vòng lặp upload từng file
@@ -435,7 +446,7 @@ ipcMain.handle("upload-to-drive", async (event, { files, targetEmail }) => {
       try {
         const driveFileName = fileObj.name.replace(/\//g, " - ");
         const fileSize = fs.statSync(fileObj.path).size;
-        
+
         let lastBytesRead = 0; // Số byte đã đọc của file hiện tại trong lần update trước
         let lastTime = Date.now();
 
@@ -450,15 +461,18 @@ ipcMain.handle("upload-to-drive", async (event, { files, targetEmail }) => {
             onUploadProgress: (evt) => {
               const currentTime = Date.now();
               const duration = (currentTime - lastTime) / 1000;
-              
+
               if (duration > 0.5) {
                 // Tốc độ: Tính dựa trên lượng data thực tế truyền đi của file hiện tại
                 const bytesSinceLast = evt.bytesRead - lastBytesRead;
                 const speedMBps = bytesSinceLast / duration / (1024 * 1024);
 
                 // TIẾN TRÌNH TỔNG (%): (Data các file cũ + Data file hiện tại) / Tổng toàn bộ
-                const overallUploaded = totalUploadedBeforeCurrentFile + evt.bytesRead;
-                const overallProgress = Math.round((overallUploaded / totalBatchSize) * 100);
+                const overallUploaded =
+                  totalUploadedBeforeCurrentFile + evt.bytesRead;
+                const overallProgress = Math.round(
+                  (overallUploaded / totalBatchSize) * 100,
+                );
 
                 event.sender.send("upload-progress", {
                   fileName: fileObj.name,
@@ -473,7 +487,9 @@ ipcMain.handle("upload-to-drive", async (event, { files, targetEmail }) => {
           },
         );
 
-        console.log(`✅ File [${driveFileName}] đã lên Drive. ID: ${res.data.id}`);
+        console.log(
+          `✅ File [${driveFileName}] đã lên Drive. ID: ${res.data.id}`,
+        );
 
         // Cộng dồn dung lượng file vừa hoàn thành để tính tiếp cho file sau
         totalUploadedBeforeCurrentFile += fileSize;
@@ -482,7 +498,7 @@ ipcMain.handle("upload-to-drive", async (event, { files, targetEmail }) => {
           fileName: fileObj.name,
           status: "OK",
         });
-        
+
         uploadResults.push({
           name: fileObj.name,
           success: true,
@@ -492,7 +508,7 @@ ipcMain.handle("upload-to-drive", async (event, { files, targetEmail }) => {
         console.error(`❌ Lỗi upload file ${fileObj.name}:`, uploadError);
         // Nếu lỗi, vẫn phải cộng dung lượng file lỗi vào để tiến trình chung không bị lệch
         totalUploadedBeforeCurrentFile += fs.statSync(fileObj.path).size;
-        
+
         event.sender.send("file-done", {
           fileName: fileObj.name,
           status: "Lỗi",
@@ -518,6 +534,42 @@ ipcMain.handle("delete-temp-files", async (event, files) => {
         console.log(`🗑️ Đã dọn dẹp file tạm: ${file.name}`);
       }
     }
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("save-login-config", async (event, newConfig) => {
+  console.log("Saving login config:", newConfig);
+  const rootPath = app.getAppPath();
+  const filePath = path.join(rootPath, 'configs', 'info.json');
+  console.log("Đường dẫn thực tế:", filePath);
+
+  try {
+    let data = { serverConfigs: [] };
+
+    // 1. Đọc file cũ nếu tồn tại
+    if (fs.existsSync(filePath)) {
+      const fileContent = fs.readFileSync(filePath, "utf-8");
+      data = JSON.parse(fileContent);
+    }
+
+    const existingIndex = data.serverConfigs.findIndex(
+      (item) => item.label.toLowerCase() === newConfig.label.toLowerCase(),
+    );
+
+    if (existingIndex > -1) {
+      // Đè lên giá trị cũ
+      data.serverConfigs[existingIndex] = newConfig;
+    } else {
+      // Thêm mới vào danh sách
+      data.serverConfigs.push(newConfig);
+    }
+
+    // 3. Ghi lại vào file
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
+
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message };
@@ -574,19 +626,28 @@ const createWindow = () => {
   const win = new BrowserWindow({
     width: 1100,
     height: 900,
-    webPreferences: { 
+    webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       disableBlinkFeatures: "AutomationControlled",
     },
   });
 
   // Kiểm tra biến Vite an toàn để tránh ReferenceError
-  if (typeof MAIN_WINDOW_VITE_DEV_SERVER_URL !== "undefined" && MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+  if (
+    typeof MAIN_WINDOW_VITE_DEV_SERVER_URL !== "undefined" &&
+    MAIN_WINDOW_VITE_DEV_SERVER_URL
+  ) {
     win.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
   } else {
     // Nếu là bản build, load file index.html
     // Lưu ý: path.join(__dirname, "../index.html") tùy thuộc vào cấu trúc thư mục out của bạn
-    const indexPath = path.join(__dirname, "..", "renderer", "main_window", "index.html");
+    const indexPath = path.join(
+      __dirname,
+      "..",
+      "renderer",
+      "main_window",
+      "index.html",
+    );
     if (fs.existsSync(indexPath)) {
       win.loadFile(indexPath);
     } else {
@@ -594,11 +655,13 @@ const createWindow = () => {
     }
   }
 
-   // 2. Ép hiển thị thanh cuộn VÀ loại trừ icon cụ thể
+  // 2. Ép hiển thị thanh cuộn VÀ loại trừ icon cụ thể
   // main.js
   // main.js
-  win.webContents.on('did-finish-load', () => {
-    win.webContents.executeJavaScript(`
+  win.webContents.on("did-finish-load", () => {
+    win.webContents
+      .executeJavaScript(
+        `
       document.querySelectorAll('*').forEach(el => {
         // 1. CHỐT CHẶN: Tuyệt đối không can thiệp vào Input, Icon và các thành phần Form
         const isInputArea = el.closest('.MuiFormControl-root') || 
@@ -618,10 +681,10 @@ const createWindow = () => {
           el.style.display = 'block';
         }
       });
-    `).catch(err => console.error("Lỗi thực thi Scrolling Script:", err));
+    `,
+      )
+      .catch((err) => console.error("Lỗi thực thi Scrolling Script:", err));
   });
-
-
 };
 
 async function uploadFilesInternal(files, targetEmail) {
@@ -796,50 +859,47 @@ ipcMain.handle("save-auto-backup", async (event, config) => {
 });
 
 // Thêm handler này vào main.js
-  ipcMain.handle("stop-auto-backup", async (event, taskId) => {
-    try {
-      console.log(`[Cron] Yêu cầu dừng Task ID: ${taskId}`);
-      console.log(`[Cron] Active Jobs hiện tại:`, activeJobs);
-      // 1. Kiểm tra xem Job có tồn tại trong bộ nhớ không
-      if (activeJobs[taskId]) {
-        activeJobs[taskId].stop(); // Lệnh dừng node-cron
-        delete activeJobs[taskId]; // Xóa khỏi bộ nhớ quản lý
-        console.log(`[Cron] Đã dừng thành công Task: ${taskId}`);
-      }
-
-      // 2. Cập nhật lại file JSON (Chuyển trạng thái hoặc xóa)
-      if (fs.existsSync(AUTO_CONFIG_PATH)) {
-        let configs = JSON.parse(fs.readFileSync(AUTO_CONFIG_PATH, "utf8"));
-        // Cách 1: Xóa hẳn task khỏi danh sách
-        configs = configs.filter(task => task.id !== taskId);
-        
-        // Hoặc Cách 2: Thêm thuộc tính enabled: false nếu bạn muốn giữ lại cấu hình
-        // configs = configs.map(task => task.id === taskId ? { ...task, enabled: false } : task);
-
-        fs.writeFileSync(AUTO_CONFIG_PATH, JSON.stringify(configs, null, 2));
-      }
-
-      return { success: true };
-    } catch (error) {
-      console.error("Lỗi khi dừng backup:", error);
-      return { success: false, error: error.message };
+ipcMain.handle("stop-auto-backup", async (event, taskId) => {
+  try {
+    console.log(`[Cron] Yêu cầu dừng Task ID: ${taskId}`);
+    console.log(`[Cron] Active Jobs hiện tại:`, activeJobs);
+    // 1. Kiểm tra xem Job có tồn tại trong bộ nhớ không
+    if (activeJobs[taskId]) {
+      activeJobs[taskId].stop(); // Lệnh dừng node-cron
+      delete activeJobs[taskId]; // Xóa khỏi bộ nhớ quản lý
+      console.log(`[Cron] Đã dừng thành công Task: ${taskId}`);
     }
-  });
 
+    // 2. Cập nhật lại file JSON (Chuyển trạng thái hoặc xóa)
+    if (fs.existsSync(AUTO_CONFIG_PATH)) {
+      let configs = JSON.parse(fs.readFileSync(AUTO_CONFIG_PATH, "utf8"));
+      // Cách 1: Xóa hẳn task khỏi danh sách
+      configs = configs.filter((task) => task.id !== taskId);
 
+      // Hoặc Cách 2: Thêm thuộc tính enabled: false nếu bạn muốn giữ lại cấu hình
+      // configs = configs.map(task => task.id === taskId ? { ...task, enabled: false } : task);
+
+      fs.writeFileSync(AUTO_CONFIG_PATH, JSON.stringify(configs, null, 2));
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error("Lỗi khi dừng backup:", error);
+    return { success: false, error: error.message };
+  }
+});
 
 // --- HÀM KHỞI TẠO: Chạy khi App vừa mở (app.whenReady) ---
-
 
 function initAutoBackups() {
   if (fs.existsSync(AUTO_CONFIG_PATH)) {
     try {
       const content = fs.readFileSync(AUTO_CONFIG_PATH, "utf8");
       // Kiểm tra nếu file trống thì bỏ qua
-      if (!content.trim()) return; 
+      if (!content.trim()) return;
 
       const configs = JSON.parse(content);
-      configs.forEach(config => {
+      configs.forEach((config) => {
         const expression = getCronExpression(config.schedule);
         const job = cron.schedule(expression, () => {
           executeAutoBackup(config);
@@ -852,7 +912,6 @@ function initAutoBackups() {
     }
   }
 }
-
 
 // 1. Handler lấy danh sách cấu hình để hiển thị lên giao diện
 ipcMain.handle("get-auto-configs", async () => {
@@ -871,7 +930,7 @@ ipcMain.handle("get-auto-configs", async () => {
 ipcMain.handle("stop-all-backups", async () => {
   try {
     // Dừng tất cả job trong RAM
-    Object.keys(activeJobs).forEach(id => {
+    Object.keys(activeJobs).forEach((id) => {
       activeJobs[id].stop();
       delete activeJobs[id];
     });
@@ -883,10 +942,9 @@ ipcMain.handle("stop-all-backups", async () => {
   }
 });
 
-
-ipcMain.handle('open-directory-dialog', async () => {
+ipcMain.handle("open-directory-dialog", async () => {
   const result = await dialog.showOpenDialog({
-    properties: ['openDirectory'] // Chỉ cho phép chọn thư mục
+    properties: ["openDirectory"], // Chỉ cho phép chọn thư mục
   });
 
   if (result.canceled) {

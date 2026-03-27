@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Box,
   TextField,
@@ -11,6 +11,7 @@ import {
   InputLabel,
   Button,
   CircularProgress,
+  Autocomplete,
 } from "@mui/material";
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
@@ -18,6 +19,7 @@ import ServerIcon from "@mui/icons-material/Computer";
 import DbIcon from "@mui/icons-material/Storage";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import LoginIcon from "@mui/icons-material/Login";
+import dataConfig from "../../configs/info.json";
 
 const FormRow = ({
   label,
@@ -67,18 +69,18 @@ const FormRow = ({
       InputProps={
         type === "password"
           ? {
-            endAdornment: (
-              <InputAdornment position="end">
-                <IconButton
-                  onClick={() => setShowPass(!showPass)}
-                  size="small"
-                  edge="end"
-                >
-                  {showPass ? <VisibilityOff /> : <Visibility />}
-                </IconButton>
-              </InputAdornment>
-            ),
-          }
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton
+                    onClick={() => setShowPass(!showPass)}
+                    size="small"
+                    edge="end"
+                  >
+                    {showPass ? <VisibilityOff /> : <Visibility />}
+                  </IconButton>
+                </InputAdornment>
+              ),
+            }
           : undefined
       }
     />
@@ -89,28 +91,54 @@ const dbOptions = [
   { label: "SQL Server", value: "sqlserver", port: "1433" },
   { label: "MySQL", value: "mysql", port: "3306" },
   { label: "MongoDB", value: "mongodb", port: "27017" },
-  { label: "PostgreSQL", value: "postgresql", port: "5432" }
-]
+  { label: "PostgreSQL", value: "postgresql", port: "5432" },
+];
 export const ConnectionForm = ({ formData, setFormData, onConnectSuccess }) => {
   const [step, setStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [serverOptions, setServerOptions] = useState([]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     if (name === "dbType") {
-    const selectedOption = dbOptions.find(opt => opt.value === value);
-    if (selectedOption) {
-      formData.port = selectedOption.port;
+      const selectedOption = dbOptions.find((opt) => opt.value === value);
+      if (selectedOption) {
+        formData.port = selectedOption.port;
+      }
     }
-  }
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
+
+  const generateLabel = (data) => {
+  const dbName = data.dbType || "DB";
+  return `${dbName.toUpperCase()} (${data.server})`;
+};
+
+  const handleSaveConfig = async (currentData) => {
+  const configToSave = {
+    ...currentData,
+    label: generateLabel(currentData) // Render label theo quy tắc bạn muốn
+  };
+
+  try {
+    // Gọi API của Electron để ghi file
+    const result = await window.electronAPI.saveLoginConfig(configToSave);
+    if (result.success) {
+      console.log("Đã lưu cấu hình thành công!");
+      // Bạn có thể reload lại dataConfig ở đây nếu cần
+    }
+  } catch (err) {
+    console.error("Lỗi khi lưu file:", err);
+  }
+};
 
   const handleLoginDbClick = async () => {
     setIsLoading(true); // Bật loading
     try {
+      console.log("Form Data trước khi test connection:", formData);
       await onConnectSuccess(); // Đợi logic ở cha chạy xong
+      await handleSaveConfig(formData);
     } finally {
       setIsLoading(false); // Tắt loading dù thành công hay thất bại
     }
@@ -153,12 +181,64 @@ export const ConnectionForm = ({ formData, setFormData, onConnectSuccess }) => {
             <ServerIcon sx={{ mr: 1 }} /> 1. KẾT NỐI SERVER
           </Typography>
 
-          <FormRow
-            label="Server Name / IP"
-            name="server"
-            value={formData.server}
-            onChange={handleChange}
-            placeholder="192.168.1.100"
+          <Autocomplete
+            freeSolo
+            // Sử dụng dữ liệu từ file info.json đã import
+            options={dataConfig.serverConfigs || []}
+            // Xác định cách hiển thị nhãn trong danh sách thả xuống
+            getOptionLabel={(option) => {
+              if (typeof option === "string") return option;
+              return option.label || option.server || "";
+            }}
+            // Cấu hình giao diện đồng bộ với các FormRow khác
+            fullWidth
+            size="small"
+            sx={{ mb: 2.5 }}
+            // Liên kết giá trị với formData.server
+            value={formData.server || ""}
+            // XỬ LÝ KHI CHỌN ITEM HOẶC NHẤN ENTER
+            onChange={(event, newValue) => {
+              if (newValue && typeof newValue === "object") {
+                // TRƯỜNG HỢP 1: Chọn một Object cấu hình từ danh sách
+                // Cập nhật tất cả các trường có trong Object đó vào formData
+                setFormData((prev) => ({
+                  ...prev,
+                  ...newValue, // Ghi đè: server, sshPort, user, password, dbUser, dbPassword...
+                }));
+              } else {
+                // TRƯỜNG HỢP 2: Người dùng gõ xong và nhấn Enter (newValue là string)
+                setFormData((prev) => ({
+                  ...prev,
+                  server: newValue || "",
+                }));
+              }
+            }}
+            // XỬ LÝ KHI ĐANG GÕ (Input thay đổi liên tục)
+            onInputChange={(event, newInputValue) => {
+              setFormData((prev) => ({
+                ...prev,
+                server: newInputValue,
+              }));
+            }}
+            // Render ô nhập liệu chính (TextField)
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Server Name / IP"
+                placeholder="Chọn cấu hình hoặc nhập IP..."
+                variant="outlined"
+                fullWidth
+                // Đảm bảo icon server hiển thị ở đầu ô nhập nếu muốn (tùy chọn)
+                InputProps={{
+                  ...params.InputProps,
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <ServerIcon fontSize="small" color="action" />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            )}
           />
           <FormRow
             label="SSH Port"
