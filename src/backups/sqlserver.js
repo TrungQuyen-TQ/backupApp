@@ -9,6 +9,9 @@ import registerFormat from "archiver-zip-encryptable";
  * Hàm lấy thống kê dữ liệu thực tế từ DB
  */
 export async function getSqlServerStats(pool) {
+  
+
+
   const versionRaw = await pool.request().query("SELECT @@VERSION as version");
   const shortVersion = versionRaw.recordset[0].version.split("-")[0].split("\n")[0].trim();
 
@@ -35,9 +38,9 @@ export async function getSqlServerStats(pool) {
 /**
  * Logic chính xử lý Backup SQL Server
  */
-export async function backupSQLServer(dbConfig, event) {
+export async function backupSQLServer(dbConfig, event,  onSshReady) {
   console.log("Starting backup with config:", dbConfig.database);
-
+  
   // Hàm hỗ trợ gửi tiến trình về UI
   const sendProgress = (msg, percent) => {
     if (event) {
@@ -77,8 +80,21 @@ export async function backupSQLServer(dbConfig, event) {
   } catch (error) {
     console.error("Lỗi đọc passwordzip.json:", error.message);
   }
-
+// KHỞI TẠO ĐỐI TƯỢNG SFTP TRƯỚC VÀO KHỐI TRY
   const sftp = new SftpClient();
+  let pool = null;
+  
+
+  // Gửi một object chứa cả 2 công cụ ra main.js
+  if (onSshReady) {
+    onSshReady({
+      stop: async () => {
+        if (pool) await pool.close(); // Ngắt lệnh SQL đang chạy
+        if (sftp) await sftp.end();   // Ngắt luồng SSH
+      }
+    });
+  }
+
 
   try {
     // 3. Kết nối SQL Server
@@ -95,10 +111,12 @@ export async function backupSQLServer(dbConfig, event) {
         connectTimeout: 10000 
       },
     });
+// CỦNG CỐ: Gửi pool SQL ra ngoài để có thể .close() nếu người dùng nhấn Hủy lúc đang chạy Query
+    if (onSshReady) onSshReady(sftp);
 
     // 4. Lấy Stats
     sendProgress("Đang quét thống kê dữ liệu...", 25);
-    const stats = await getDatabaseStats(pool);
+    const stats = await getSqlServerStats(pool);
 
     // 5. Chạy lệnh Backup trên Server
     sendProgress(`Đang thực thi lệnh BACKUP DATABASE...`, 45);
@@ -109,6 +127,11 @@ export async function backupSQLServer(dbConfig, event) {
 
     // 6. Kết nối SSH và kéo file về
     sendProgress("Đang kết nối SSH để truyền file...", 65);
+
+
+    // QUAN TRỌNG: Gán đối tượng SFTP ra ngoài main.js trước khi gọi connect()
+    // Để khi nhấn Hủy, main.js có thể gọi sftp.end() ngay lập tức
+    if (onSshReady) onSshReady(sftp);
     await sftp.connect({
       host: dbConfig.server,
       port: Number(dbConfig.sshPort) || 22,
@@ -158,10 +181,14 @@ export async function backupSQLServer(dbConfig, event) {
     };
 
   } catch (err) {
-    sendProgress(`Lỗi: ${err.message}`, 0);
+    sendProgress(`Tiến trình đã dừng: ${err.message}`, 0);
     try { await sftp.end(); } catch (e) { }
+    try { await sql.close(); } catch (e) { }
+
+
     if (fs.existsSync(filePathOnWindows)) fs.unlinkSync(filePathOnWindows);
     console.error("Lỗi quy trình backup:", err.message);
+    
     return { success: false, error: `Lỗi quy trình: ${err.message}` };
   }
 }

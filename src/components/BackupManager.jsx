@@ -266,7 +266,7 @@ const BackupManager = ({ onUpload, showMsg, isUploading, uploadSpeed,  }) => {
             {/* Ô Giám sát đường truyền di chuyển từ App.jsx sang */}
             <TextField
               fullWidth
-              label="Giám sát đường truyền"
+              label="Tốc độ đường chuyền"
               size="small"
               variant="outlined"
               value={isUploading ? uploadSpeed : "Hệ thống sẵn sàng"}

@@ -66,6 +66,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getAutoConfigs: () => ipcRenderer.invoke("get-auto-configs"),
   stopAllBackups: () => ipcRenderer.invoke("stop-all-backups"),
   saveAutoBackup: (config) => ipcRenderer.invoke("save-auto-backup", config),
+
+  // Trong preload.js
+stopBackupProcess: () => ipcRenderer.invoke("stop-backup-process"),
+
+
+
   // preload.js thêm vào trong contextBridge
   onBackupProgress: (callback) => {
     const subscription = (_event, data) => callback(data);

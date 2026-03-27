@@ -81,6 +81,40 @@ const saveHistory = (filePath, data) => {
 };
 
 
+// main.js
+let activeConnections = {}; // Object để lưu các kết nối SSH đang chạy theo ID
+
+// Trong main.js
+let currentSshClient = null;
+let currentBackupController = null;
+
+
+// Sửa handler stop-backup-process
+// ipcMain.handle("stop-backup-process", async () => {
+//   if (currentSshClient) {
+//     try {
+//       currentSshClient.end(); // Ngắt kết nối SSH ngay lập tức
+//       currentSshClient = null;
+//       console.log("--- Đã ngắt tiến trình SSH thành công ---");
+//       return { success: true };
+//     } catch (err) {
+//       return { success: false, error: err.message };
+//     }
+//   }
+//   return { success: false, error: "Không có tiến trình SSH nào đang chạy" };
+// });
+
+ipcMain.handle("stop-backup-process", async () => {
+  if (currentBackupController) {
+    await currentBackupController.stop(); // Dừng tất cả mọi thứ
+    currentBackupController = null;
+    return { success: true };
+  }
+  return { success: false, error: "Không có tiến trình nào" };
+});
+
+
+
 ipcMain.handle("save-backup-history", (event, data) => saveHistory(HISTORY_BACKUP_PATH, data));
 ipcMain.handle("save-upload-history", (event, data) => saveHistory(HISTORY_UPLOAD_PATH, data));
 
@@ -340,13 +374,42 @@ ipcMain.handle("create-postgres-backup", async (event, dbConfig) => {
 });
 
 
+// ipcMain.handle("create-sql-backup", async (event, dbConfig) => {
+//   const handler = backupHandlers[dbConfig.dbType];
+//   if (!handler) return { success: false, error: "Unsupported type" };
+
+//   // THÊM: Truyền 'event' vào làm tham số thứ 2
+//   return await handler(dbConfig, event); 
+// });
+
+
+// main.js
+// main.js - Tìm handler create-sql-backup
+// ipcMain.handle("create-sql-backup", async (event, dbConfig) => {
+//   const handler = backupHandlers[dbConfig.dbType];
+//   if (!handler) return { success: false, error: "Unsupported type" };
+
+//   try {
+//     // Gọi backup và truyền vào callback để lấy SshClient ra ngoài
+//     const result = await handler(dbConfig, event, (client) => {
+//        currentSshClient = client; // Lưu lại kết nối đang chạy vào biến toàn cục
+//     });
+
+//     currentSshClient = null; // Backup xong (thành công) thì xóa biến
+//     return result;
+//   } catch (err) {
+//     currentSshClient = null; // Lỗi cũng xóa biến
+//     return { success: false, error: err.message };
+//   }
+// });
+
 ipcMain.handle("create-sql-backup", async (event, dbConfig) => {
   const handler = backupHandlers[dbConfig.dbType];
-  if (!handler) return { success: false, error: "Unsupported type" };
-
-  // THÊM: Truyền 'event' vào làm tham số thứ 2
-  return await handler(dbConfig, event); 
+  return await handler(dbConfig, event, (controller) => {
+    currentBackupController = controller; // Lưu object chứa hàm stop()
+  });
 });
+
 
 
 ipcMain.handle("get-temp-files", async (event, localPath) => {

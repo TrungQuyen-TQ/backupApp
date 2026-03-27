@@ -87,7 +87,7 @@ export const CloudBackup = ({
 
             <TextField
               fullWidth
-              label="Giám sát đường truyền"
+              label="tốc độ đường truyền" // Đổi label thành "Tốc độ đường truyền"
               size="small"
               variant="outlined"
               value={isUploading ? uploadSpeed : "Hệ thống sẵn sàng"}
