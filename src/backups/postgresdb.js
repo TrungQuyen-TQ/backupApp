@@ -17,11 +17,46 @@ export async function executeSshBackup(
   transferConfig,
   mainCommand,
   onProgress,
+  onSshReady // <--- THÊM THAM SỐ NÀY ĐỂ NHẬN CALLBACK TỪ TRÊN XUỐNG
 ) {
   return new Promise((resolve) => {
     const ssh = new SshClient();
     const { host, port, username, password } = sshConfig;
     const { remoteZipFile, localPath } = transferConfig;
+
+
+    // 🔴 QUAN TRỌNG: Gửi đối tượng SSH ra ngoài main.js ngay lập tức
+    // if (onSshReady) {
+    //   onSshReady({
+    //     stop: async () => {
+    //       try {
+    //         ssh.end(); // Ngắt kết nối SSH ngay lập tức
+    //         console.log("--- Đã ngắt tiến trình SSH từ nút Hủy ---");
+    //       } catch (e) { console.error("Lỗi khi ngắt SSH:", e); }
+    //     }
+    //   });
+    // }
+
+    if (onSshReady) {
+      onSshReady({
+        stop: async () => {
+          try {
+            // TRƯỚC KHI NGẮT SSH: Gửi lệnh xóa các file tạm có thể đang dở dang
+            // Lệnh này sẽ xóa cả file .bak và file .7z dựa trên đường dẫn đang chạy
+            const cleanupCmd = `rm -f ${transferConfig.remoteZipFile} ${transferConfig.remoteZipFile.replace('.7z', '.bak')}`;
+            
+            ssh.exec(cleanupCmd, () => {
+              ssh.end(); // Sau khi ra lệnh xóa thì mới đóng kết nối
+              console.log("--- Đã dọn dẹp Server và ngắt SSH ---");
+            });
+          } catch (e) { 
+            console.error("Lỗi khi dọn dẹp server:", e);
+            ssh.end(); 
+          }
+        }
+      });
+    }
+    
 
     ssh
       .on("ready", () => {
@@ -128,21 +163,23 @@ async function getDatabaseStats(client, dbName) {
   return { shortVersion, rowCounts };
 }
 
-export async function universalBackupHandler(formData, event) {
+export async function universalBackupHandler(formData, event, onSshReady) {
   console.log("Backup Config Received:", formData);
+  
   const sendProgress = (msg, percent) => {
     if (event) {
       event.sender.send("backup-progress", { message: msg, progress: percent });
     }
   };
-  // --- KHAI BÁO CÁC BIẾN CẤU HÌNH TRƯỚC ---
+
   sendProgress("Bắt đầu quy trình backup...", 5);
 
   const timestamp = Date.now();
   const localDir = formData.localPath;
   const dbName = formData.database;
   const dbType = formData.dbType;
-  // 1. Đọc mật khẩu Zip từ file JSON
+  
+  // 1. Đọc mật khẩu Zip
   const passwordPath = path.join(process.cwd(), "configs", "passwordzip.json");
   let backupPassword = "admin123";
   try {
@@ -154,19 +191,27 @@ export async function universalBackupHandler(formData, event) {
     console.warn("Không đọc được file mật khẩu, dùng mặc định.");
   }
 
-  // 2. Chuẩn bị các biến cho lệnh nén (LÀM TRƯỚC KHI TẠO mainCommand)
+  // 2. CHUẨN BỊ BIẾN CƠ BẢN
   const safeDbPass = JSON.stringify(formData.dbPassword);
   const safeZipPass = JSON.stringify(backupPassword);
-  const remoteBase = `/tmp/backup_${dbType}_${dbName}_${timestamp}`;
-  const remoteZipFile = `${remoteBase}.7z`;
+  
+  // Mặc định remoteBase ở /tmp, riêng SQL Server sẽ ghi đè lại trong case
+  let remoteBase = `/tmp/backup_${dbType}_${dbName}_${timestamp}`;
+  let remoteZipFile = `${remoteBase}.7z`;
+  
   const finalFileName = `backup_${dbType}_${dbName}_${timestamp}.7z`;
   const fullLocalPath = path.join(localDir, finalFileName);
 
-  // 3. Lấy Thống kê (Stats)
-  sendProgress("Đang kết nối Postgres lấy thông tin thống kê...", 15);
-  let dbStats = { shortVersion: "N/A", rowCounts: {} };
+  // --- QUAN TRỌNG: KHỞI TẠO transferConfig TRƯỚC KHI VÀO SWITCH CASE ---
+  const transferConfig = {
+    remoteZipFile: remoteZipFile, // Sẽ được cập nhật lại nếu là SQL Server
+    localPath: fullLocalPath,
+  };
 
-  // 4. Kiểm tra và tạo thư mục localPath
+  let dbStats = { shortVersion: "N/A", rowCounts: {} };
+  let mainCommand = "";
+
+  // 3. Kiểm tra thư mục local
   if (!fs.existsSync(localDir)) {
     try {
       fs.mkdirSync(localDir, { recursive: true });
@@ -175,15 +220,12 @@ export async function universalBackupHandler(formData, event) {
     }
   }
 
-  // 5. Tạo lệnh MainCommand (Lúc này các biến đã chắc chắn có giá trị)
-  let mainCommand;
-
+  // 4. SWITCH CASE THEO LOẠI DB
   switch (dbType) {
     case "postgres": {
       const remoteFile = `${remoteBase}.sql`;
       mainCommand = `export PGPASSWORD=${safeDbPass} && pg_dump -h localhost -U ${formData.dbUser} -d ${dbName} -f ${remoteFile} && (7za a -p${safeZipPass} -mhe=on ${remoteZipFile} ${remoteFile} || 7z a -p${safeZipPass} -mhe=on ${remoteZipFile} ${remoteFile}) && rm -f ${remoteFile}`;
 
-      // Logic lấy stats của bạn
       const pgClient = new Client({
         host: formData.server,
         port: formData.dbPort || 5432,
@@ -195,97 +237,87 @@ export async function universalBackupHandler(formData, event) {
         await pgClient.connect();
         dbStats = await getDatabaseStats(pgClient, dbName);
         await pgClient.end();
-      } catch (err) {
-        console.error("Stats fail:", err.message);
-      }
+      } catch (err) { console.error("Stats fail:", err.message); }
       break;
     }
 
     case "mysql": {
       const remoteFile = `${remoteBase}.sql`;
       mainCommand = `export MYSQL_PWD=${formData.dbPassword} && mysqldump -h localhost -u ${formData.dbUser} ${dbName} > ${remoteFile} && (7za a -p${safeZipPass} -mhe=on ${remoteZipFile} ${remoteFile} || 7z a -p${safeZipPass} -mhe=on ${remoteZipFile} ${remoteFile}) && rm -f ${remoteFile}`;
-      const connection = await mysql.createConnection({
-        host: formData.server,
-        user: formData.dbUser,
-        password: formData.dbPassword,
-        database: formData.database,
-        port: Number(formData.dbPort) || 3306,
-      });
-      dbStats = await getMysqlStats(connection, formData.database);
-      await connection.end();
+      try {
+        const connection = await mysql.createConnection({
+          host: formData.server,
+          user: formData.dbUser,
+          password: formData.dbPassword,
+          database: formData.database,
+          port: Number(formData.dbPort) || 3306,
+        });
+        dbStats = await getMysqlStats(connection, formData.database);
+        await connection.end();
+      } catch (e) { console.error("MySQL Stats fail"); }
       break;
     }
 
     case "mongodb": {
-      // MongoDB dump ra thư mục nên dùng rm -rf
       const remoteDir = `${remoteBase}_dir`;
-      const rawPass = formData.dbPassword; // Ví dụ: mk@123
-
-      // --- PHẦN 1: Dùng cho MongoClient (Cần encode) ---
-      const encodedPass = encodeURIComponent(rawPass); // Trở thành: mk%40123
+      const rawPass = formData.dbPassword;
+      const encodedPass = encodeURIComponent(rawPass);
       const mongoUri = `mongodb://${formData.dbUser}:${encodedPass}@localhost:27017/${dbName}?authSource=admin`;
       const mClient = new MongoClient(mongoUri, { connectTimeoutMS: 5000 });
-
-      // --- PHẦN 2: Dùng cho mongodump qua SSH (Cần bọc nháy đơn, KHÔNG encode) ---
-      // Hàm này đảm bảo mật khẩu gốc được bảo vệ an toàn khi truyền qua SSH
       const shellSafePass = `'${rawPass.replace(/'/g, "'\\''")}'`;
 
-      mainCommand = `mongodump --host localhost --username ${formData.dbUser} --password ${shellSafePass} --authenticationDatabase admin --db ${dbName} --out ${remoteDir} && (7za a -p${shellSafePass} -mhe=on ${remoteZipFile} ${remoteDir} || 7z a -p${shellSafePass} -mhe=on ${remoteZipFile} ${remoteDir}) && rm -rf ${remoteDir}`;
+      mainCommand = `mongodump --host localhost --username ${formData.dbUser} --password ${shellSafePass} --authenticationDatabase admin --db ${dbName} --out ${remoteDir} && (7za a -p${safeZipPass} -mhe=on ${remoteZipFile} ${remoteDir} || 7z a -p${safeZipPass} -mhe=on ${remoteZipFile} ${remoteDir}) && rm -rf ${remoteDir}`;
       try {
         sendProgress("Đang kết nối MongoDB lấy stats...", 20);
         await mClient.connect();
         dbStats = await getMongoStats(mClient, dbName);
         await mClient.close();
-        sendProgress("Lấy thông tin MongoDB thành công.", 30);
       } catch (err) {
         console.error("Mongo Stats Error:", err.message);
-        sendProgress(
-          "Không lấy được stats Mongo, vẫn tiếp tục backup SSH...",
-          30,
-        );
         if (mClient) await mClient.close();
       }
       break;
     }
 
     case "sqlserver": {
-      const remoteFile = `${remoteBase}.bak`;
-      const sqlPath = "/opt/mssql-tools18/bin/sqlcmd";
-      mainCommand = `${sqlPath} -S localhost -U "${formData.dbUser}" -P '${formData.dbPassword}' -C -Q "BACKUP DATABASE [${dbName}] TO DISK='${remoteFile}'" && 7za a -p'${safeZipPass}' -mhe=on ${remoteZipFile} ${remoteFile} && rm -f ${remoteFile}`;
+      // Đổi sang thư mục mssql data để tránh lỗi Permission 31
+      // 1. Phải khai báo biến sqlPath ở đây
+      const sqlPath = "/opt/mssql-tools18/bin/sqlcmd"; 
 
-      console.log("SQL Server mainCommand:", mainCommand);
+      const remoteBaseMssql = `/var/opt/mssql/data/backup_${dbName}_${timestamp}`;
+      const remoteFile = `${remoteBaseMssql}.bak`;
+      const remoteZipFileSql = `${remoteBaseMssql}.7z`; 
+
+      transferConfig.remoteZipFile = remoteZipFileSql;
+
+      // 2. Bây giờ dùng ${sqlPath} mới không bị lỗi "not defined"
+      mainCommand = `touch ${remoteFile} && chmod 777 ${remoteFile} && ${sqlPath} -S localhost -U "${formData.dbUser}" -P '${formData.dbPassword}' -C -Q "BACKUP DATABASE [${dbName}] TO DISK='${remoteFile}' WITH FORMAT, INIT" && [ -s ${remoteFile} ] && 7za a -p${safeZipPass} -mhe=on ${remoteZipFileSql} ${remoteFile} ; rm -f ${remoteFile}`;
+
+      console.log("SQL Server Optimized Command:", mainCommand);
+
       const sqlConfig = {
         user: formData.dbUser,
         password: formData.dbPassword,
         server: formData.server,
         database: dbName,
         port: Number(formData.dbPort) || 1433,
-        options: {
-          encrypt: true, // Thường cần true nếu dùng Azure/Cloud
-          trustServerCertificate: true, // Quan trọng khi dùng cert tự ký trên Linux
-        },
+        options: { encrypt: true, trustServerCertificate: true },
       };
 
       try {
         sendProgress("Đang kết nối SQL Server lấy stats...", 20);
         const pool = await mssql.connect(sqlConfig);
-        dbStats = await getSqlServerStats(pool); // Hàm bạn vừa gửi
+        dbStats = await getSqlServerStats(pool);
         await mssql.close();
-        sendProgress("Lấy thông tin SQL Server thành công.", 30);
       } catch (err) {
         console.error("SQL Server Stats Error:", err.message);
-        sendProgress(
-          "Không lấy được stats SQL Server, vẫn tiếp tục backup SSH...",
-          30,
-        );
-        try {
-          await mssql.close();
-        } catch (e) {}
+        try { await mssql.close(); } catch (e) {}
       }
       break;
     }
   }
 
+  // 5. Cấu hình SSH
   const sshConfig = {
     host: formData.server,
     port: formData.sshPort || 22,
@@ -293,11 +325,7 @@ export async function universalBackupHandler(formData, event) {
     password: formData.password,
   };
 
-  const transferConfig = {
-    remoteZipFile: remoteZipFile,
-    localPath: fullLocalPath,
-  };
-  console.log("SSH Config:", sshConfig);
+  console.log("Thực hiện lệnh SSH:", mainCommand);
 
   // 6. Thực hiện Backup
   const backupResult = await executeSshBackup(
@@ -305,6 +333,7 @@ export async function universalBackupHandler(formData, event) {
     transferConfig,
     mainCommand,
     sendProgress,
+    onSshReady
   );
 
   if (backupResult.success) {

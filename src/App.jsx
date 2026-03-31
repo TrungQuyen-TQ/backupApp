@@ -200,37 +200,66 @@ const isCancelledRef = React.useRef(false);
   };
 
   // 3. Cập nhật hàm Backup
+// const handleBackupSpecificDb = async (log) => {
+//   setBackingUpId(log.id);
+//   setUploadProgress(0);
+//   isCancelledRef.current = false; // Reset trạng thái hủy khi bắt đầu mới
+
+//   try {
+//     const result = await window.electronAPI.createSqlBackup(log);
+
+//     // KIỂM TRA QUA REF: Ref sẽ luôn giữ giá trị mới nhất ngay cả khi không render lại
+//     if (isCancelledRef.current) {
+//       console.log("Tiến trình đã bị người dùng hủy.");
+//       return; 
+//     }
+
+//     if (result && result.success) {
+//       setBackupStats(result);
+//       setShowBackupModal(true);
+//       await window.electronAPI.saveBackupHistory({
+//         dbName: result.dbName || log.database,
+//         fileName: result.fileName,
+//         stats: result.stats || { rowCounts: {}, version: "N/A" },
+//         localPath: log.localPath, 
+//       });
+//       showMsg(`✅ Backup thành công: ${result.dbName}`, "success");
+//     } else {
+//       showMsg(`❌ Lỗi: ${result?.error || 'Không xác định'}`, "error");
+//     }
+//   } catch (err) {
+//     if (!isCancelledRef.current) showMsg("Lỗi: " + err.message, "error");
+//   } finally {
+//     setBackingUpId(null);
+//   }
+// };
+
+
 const handleBackupSpecificDb = async (log) => {
-  setBackingUpId(log.id);
-  isCancelledRef.current = false; // Reset trạng thái hủy khi bắt đầu mới
+    setBackingUpId(log.id); // Giữ ID này để UI sáng đèn
+    setUploadProgress(0);
+    isCancelledRef.current = false;
 
-  try {
-    const result = await window.electronAPI.createSqlBackup(log);
+    try {
+      const result = await window.electronAPI.createSqlBackup(log);
+      if (isCancelledRef.current) return; 
 
-    // KIỂM TRA QUA REF: Ref sẽ luôn giữ giá trị mới nhất ngay cả khi không render lại
-    if (isCancelledRef.current) {
-      console.log("Tiến trình đã bị người dùng hủy.");
-      return; 
-    }
-
-    if (result && result.success) {
-      setBackupStats(result);
-      setShowBackupModal(true);
-      await window.electronAPI.saveBackupHistory({
-        dbName: result.dbName || log.database,
-        fileName: result.fileName,
-        stats: result.stats || { rowCounts: {}, version: "N/A" },
-        localPath: log.localPath, 
-      });
-      showMsg(`✅ Backup thành công: ${result.dbName}`, "success");
-    } else {
-      showMsg(`❌ Lỗi: ${result?.error || 'Không xác định'}`, "error");
-    }
-  } catch (err) {
-    if (!isCancelledRef.current) showMsg("Lỗi: " + err.message, "error");
-  } finally {
-    setBackingUpId(null);
-  }
+      if (result && result.success) {
+        setBackupStats(result);
+        setShowBackupModal(true);
+        await window.electronAPI.saveBackupHistory({
+          dbName: result.dbName || log.database,
+          fileName: result.fileName,
+          stats: result.stats || { rowCounts: {}, version: "N/A" },
+          localPath: log.localPath, 
+        });
+      } else {
+        showMsg(`❌ Lỗi [${log.database}]: ${result?.error}`, "error");
+      }
+    } catch (err) {
+      if (!isCancelledRef.current) showMsg(`⚠️ Lỗi: ` + err.message, "error");
+    } 
+    // ❌ XÓA DÒNG setBackingUpId(null) Ở ĐÂY
 };
 
   const handleCheckVersion = async (log) => {
@@ -307,19 +336,10 @@ const handleBackupSpecificDb = async (log) => {
     if (path) {
       setFormData((prev) => ({
         ...prev,
-        localPath: path,
+        localPath: path, // Chỉ cập nhật đường dẫn, giữ nguyên server/user/pass
       }));
     }
-    if (path) {
-      const newData = {
-        ...formData,
-        localPath: path,
-      };
-      console.log("New data:", newData);
-
-      setFormData(newData);
-    }
-  };
+};
 
   const handleOpenBackupConfig = async (log, showModal = true) => {
     setSelectedLogForBackup(log);
@@ -363,32 +383,67 @@ const handleBackupSpecificDb = async (log) => {
     }
   };
 
-  const handleBackupMultipleDbs = async () => {
-    if (selectedDbs.length === 0)
-      return alert("Vui lòng chọn ít nhất 1 database!");
+  // const handleBackupMultipleDbs = async () => {
+  //   if (selectedDbs.length === 0)
+  //     return alert("Vui lòng chọn ít nhất 1 database!");
 
-    setShowInputDbModal(false);
+  //   setShowInputDbModal(false);
 
-    const limit = 2; // 🔥 số job chạy song song
+  //   const limit = 2; // 🔥 số job chạy song song
 
-    for (let i = 0; i < selectedDbs.length; i += limit) {
-      const batch = selectedDbs.slice(i, i + limit);
+  //   for (let i = 0; i < selectedDbs.length; i += limit) {
+  //     const batch = selectedDbs.slice(i, i + limit);
 
-      await Promise.all(
-        batch.map((dbName) => {
-          const currentConfig = {
+  //     await Promise.all(
+  //       batch.map((dbName) => {
+  //         const currentConfig = {
 
-            ...selectedLogForBackup,
-            database: dbName,
-          };
+  //           ...selectedLogForBackup,
+  //           database: dbName,
+  //         };
 
-          return handleBackupSpecificDb(currentConfig);
-        }),
-      );
-    }
+  //         return handleBackupSpecificDb(currentConfig);
+  //       }),
+  //     );
+  //   }
 
-    setSelectedDbs([]);
-  };
+  //   setSelectedDbs([]);
+  // };
+  
+
+ const handleBackupMultipleDbs = async () => {
+  if (selectedDbs.length === 0) return alert("Vui lòng chọn ít nhất 1 database!");
+  setShowInputDbModal(false);
+
+  for (const dbName of selectedDbs) {
+    const currentConfig = {
+      ...selectedLogForBackup,
+      database: dbName,
+      id: selectedLogForBackup.id 
+    };
+
+    setUploadSpeed(`Đang chuẩn bị: ${dbName}...`);
+    await handleBackupSpecificDb(currentConfig);
+    
+    // NẾU ĐÃ NHẤN HỦY: Thoát vòng lặp ngay lập tức, không chạy DB tiếp theo
+    if (isCancelledRef.current) break; 
+
+    setUploadProgress(0);
+  }
+
+  // CHỈ HIỆN THÔNG BÁO NẾU KHÔNG BỊ HỦY
+  if (!isCancelledRef.current) {
+    showMsg(`Đã hoàn thành toàn bộ ${selectedDbs.length} bản backup!`, "success");
+  } else {
+    showMsg("Đã dừng tiến trình backup theo yêu cầu.", "warning");
+  }
+
+  setBackingUpId(null); 
+  setSelectedDbs([]);
+};
+
+
+
 
   const handleClose = (event, reason) => {
     if (reason === "clickaway") return; // Tránh đóng khi click ra ngoài nếu muốn
@@ -404,13 +459,31 @@ const handleBackupSpecificDb = async (log) => {
 
 
   // Thêm hàm này vào App.jsx
+// const handleStopCurrentBackup = async (logId) => {
+//   if (window.confirm("Bạn có chắc muốn dừng backup?")) {
+//     isCancelledRef.current = true; // Đánh dấu đã hủy vào Ref
+//     const result = await window.electronAPI.stopBackupProcess(); 
+//     if (result.success) {
+//       setBackingUpId(null);
+//       showMsg("Đã ngắt kết nối!", "warning");
+//     }
+//   }
+// };
+
+
+// App.jsx
+
 const handleStopCurrentBackup = async (logId) => {
-  if (window.confirm("Bạn có chắc muốn dừng backup?")) {
-    isCancelledRef.current = true; // Đánh dấu đã hủy vào Ref
+  if (window.confirm("Bạn có chắc chắn muốn dừng quá trình backup này không?")) {
+    isCancelledRef.current = true; // Chặn không cho Modal hiện lên sau khi await xong
+    
+    // Gọi xuống Backend để đóng kết nối SSH thực tế
     const result = await window.electronAPI.stopBackupProcess(); 
+    
     if (result.success) {
       setBackingUpId(null);
-      showMsg("Đã ngắt kết nối!", "warning");
+      setUploadProgress(0); // Đưa thanh tiến trình về 0
+      showMsg("Đã dừng tiến trình và ngắt kết nối!", "warning");
     }
   }
 };
@@ -508,7 +581,7 @@ const handleStopCurrentBackup = async (logId) => {
                     )}
                     MenuProps={MenuProps}
                   >
-                    {dbList.length === 0 ? (
+                    {(dbList || []).length === 0 ? (
                       <MenuItem disabled>
                         <em>Không có dữ liệu</em>
                       </MenuItem>
@@ -578,7 +651,7 @@ const handleStopCurrentBackup = async (logId) => {
                 ✅ Hoàn tất BackUp
               </Typography>
               <Divider sx={{ mb: 2 }} />
-              <Typography variant="body2">
+              <Typography variant="body2" component="div">
                 <b>File:</b> {backupStats?.fileName}
               </Typography>
               <Box
@@ -595,6 +668,7 @@ const handleStopCurrentBackup = async (logId) => {
                 {backupStats?.dbName && (
                   <Typography
                     variant="subtitle2"
+                    component="div" // <--- THÊM DÒNG NÀY
                     sx={{
                       fontWeight: 800,
                       mb: 1,
@@ -702,6 +776,7 @@ const handleStopCurrentBackup = async (logId) => {
                       uploadProgress={uploadProgress}
                       uploadSpeed={uploadSpeed}
                       isLoading={isLoading}
+                      cloudSubTab={0} // Mặc định là Google Drive
                     />
                   </Box>
                 )}

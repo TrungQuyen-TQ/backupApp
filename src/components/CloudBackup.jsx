@@ -1,10 +1,7 @@
 import React, { useState } from "react";
 import {
   Box,
-  Tabs,
-  Tab,
   Typography,
-  Button,
   CircularProgress,
   TextField,
   InputAdornment,
@@ -16,78 +13,49 @@ export const CloudBackup = ({
   handleOpenUploadPopup,
   isUploading,
   uploadProgress,
-  uploadSpeed, // Nhận thêm tốc độ
+  uploadSpeed,
   isLoading,
 }) => {
   const [cloudSubTab, setCloudSubTab] = useState(0);
 
   return (
     <Box sx={{ p: 0 }}>
-      {/* Thanh điều hướng Sub-tabs */}
-      {/* <Box
-        sx={{
-          width: "100%",
-          bgcolor: "#f5f7fa",
-          borderBottom: 1,
-          borderColor: "divider",
-        }}
-      >
-        <Tabs
-          value={cloudSubTab}
-          onChange={(e, v) => setCloudSubTab(v)}
-          centered
-          sx={{
-            "& .MuiTab-root": {
-              textTransform: "none",
-              fontWeight: "bold",
-              fontSize: "1rem",
-            },
-            "& .Mui-selected": { color: "#fff !important", bgcolor: "#1976d2" },
-            "& .MuiTabs-indicator": { display: "none" },
-          }}
-        >
-          <Tab label="Google Drive" />
-          <Tab label="AWS" />
-        </Tabs>
-      </Box> */}
-
       <Box sx={{ p: 2 }}>
         {/* NỘI DUNG GOOGLE DRIVE */}
         {cloudSubTab === 0 && (
           <Box>
-            {/* <Typography variant="subtitle2" sx={{ mb: 2, color: '#666' }}>
-                            Cấu hình và Giám sát Google Drive
-                        </Typography>
-
-                        <Button
-                            fullWidth
-                            onClick={handleOpenUploadPopup}
-                            variant="contained"
-                            startIcon={
-                                isUploading ? <CircularProgress size={20} color="inherit" /> : <CloudIcon />
-                            }
-                            disabled={isLoading || isUploading}
-                            sx={{ py: 1.5, position: "relative", overflow: "hidden", mb: 2 }}
-                        >
-                            {isUploading ? `Đang tải lên (${uploadProgress}%)` : "Bắt đầu tải lên Drive"}
-                            {isUploading && (
-                                <LinearProgress
-                                    variant="determinate"
-                                    value={uploadProgress}
-                                    sx={{
-                                        position: "absolute",
-                                        bottom: 0,
-                                        left: 0,
-                                        right: 0,
-                                        height: 4,
-                                    }}
-                                />
-                            )}
-                        </Button> */}
+            {/* --- PHẦN MỚI: HIỂN THỊ TIẾN TRÌNH % --- */}
+            <Box sx={{ mb: 3 }}>
+              <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: "bold", color: isUploading ? "#1976d2" : "#757575" }}>
+                  {isUploading ? "Tiến trình tải lên" : "Sẵn sàng đẩy bản ghi"}
+                </Typography>
+                <Typography variant="body2" sx={{ fontWeight: "bold", color: "#1976d2" }}>
+                  {uploadProgress}%
+                </Typography>
+              </Box>
+              
+              <LinearProgress
+                variant="determinate"
+                value={uploadProgress}
+                sx={{
+                  height: 10,
+                  borderRadius: 5,
+                  bgcolor: "#e0e0e0",
+                  "& .MuiLinearProgress-bar": {
+                    borderRadius: 5,
+                    backgroundImage: isUploading 
+                      ? "linear-gradient(45deg, #1976d2 30%, #64b5f6 90%)" 
+                      : "none",
+                  },
+                }}
+              />
+            </Box>
+            {/* -------------------------------------- */}
 
             <TextField
               fullWidth
-              label="tốc độ đường truyền" // Đổi label thành "Tốc độ đường truyền"
+              label="Tốc độ đường truyền"
               size="small"
               variant="outlined"
               value={isUploading ? uploadSpeed : "Hệ thống sẵn sàng"}
