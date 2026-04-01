@@ -126,12 +126,29 @@ const UploadPanel = ({ onUpload, showMsg, formdata }) => {
     else setSelectedFiles(files.map((f) => f.name));
   };
 
-  const handleUploadClick = () => {
-    if (selectedFiles.length === 0) return showMsg("Chọn file", "warning");
-    if (uploadTarget === "drive" && targetEmails.length === 0) return showMsg("Chọn drive", "warning");
+  const handleUploadClick = async () => { // SỬA: Thêm async ở đây
+    if (selectedFiles.length === 0) return showMsg("Vui lòng chọn ít nhất 1 file", "warning");
+    if (uploadTarget === "drive" && targetEmails.length === 0) return showMsg("Vui lòng chọn Drive đích", "warning");
 
     const filesToUpload = files.filter((f) => selectedFiles.includes(f.name));
-    onUpload(filesToUpload, targetEmails);
+    
+    // 1. Chờ quá trình upload hoàn tất (onUpload cần là một async function từ App.jsx)
+    try {
+      setIsLoading(true); // Hiển thị loading trong khi chờ dọn dẹp
+      await onUpload(filesToUpload, targetEmails);
+      
+      // 2. Sau khi upload và server xóa file xong, ta gọi lại loadFiles để cập nhật UI
+      // Thêm một chút delay nhỏ (khoảng 500ms) để đảm bảo ổ cứng đã kịp cập nhật trạng thái xóa
+      setTimeout(async () => {
+        await loadFiles();
+        showMsg("Đã dọn dẹp danh sách file thành công", "success");
+      }, 1000);
+
+    } catch (error) {
+      showMsg("Lỗi trong quá trình xử lý sau upload", "error");
+    } finally {
+      // Logic setIsLoading(false) sẽ nằm trong loadFiles nên không cần ở đây
+    }
   };
 
   return (

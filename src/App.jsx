@@ -104,34 +104,65 @@ const isCancelledRef = React.useRef(false);
 
   // --- Quản lý trạng thái Upload (Chỉ giữ 1 bộ duy nhất) ---
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [driveProgress, setDriveProgress] = useState(0);   // THÊM: Dùng riêng cho Google Drive
+
+
   const [uploadSpeed, setUploadSpeed] = useState("");
   const [isUploading, setIsUploading] = useState(false);
 
+  // useEffect(() => {
+  //   let unsubUpload;
+  //   let unsubBackup;
+
+  //   // Lắng nghe tiến trình Upload
+  //   if (window.electronAPI?.onUploadProgress) {
+  //     unsubUpload = window.electronAPI.onUploadProgress((data) => {
+  //       setUploadProgress(data.progress || 0);
+  //       setUploadSpeed(data.speed || "");
+  //     });
+  //   }
+
+  //   // SỬA: Lắng nghe thêm tiến trình Backup (Cần thêm hàm này vào preload.js)
+  //   if (window.electronAPI?.onBackupProgress) {
+  //     unsubBackup = window.electronAPI.onBackupProgress((data) => {
+  //       setUploadProgress(data.progress || 0); // Dùng chung state progress
+  //       setUploadSpeed(data.message || "Đang xử lý..."); // Hiện trạng thái backup vào ô tốc độ
+  //     });
+  //   }
+
+  //   return () => {
+  //     if (unsubUpload) unsubUpload();
+  //     if (unsubBackup) unsubBackup();
+  //   };
+  // }, []);
+  
+
   useEffect(() => {
-    let unsubUpload;
-    let unsubBackup;
+  let unsubUpload;
+  let unsubBackup;
 
-    // Lắng nghe tiến trình Upload
-    if (window.electronAPI?.onUploadProgress) {
-      unsubUpload = window.electronAPI.onUploadProgress((data) => {
-        setUploadProgress(data.progress || 0);
-        setUploadSpeed(data.speed || "");
-      });
-    }
+  // 1. Sửa phần Upload: Cập nhật vào driveProgress
+  if (window.electronAPI?.onUploadProgress) {
+    unsubUpload = window.electronAPI.onUploadProgress((data) => {
+      setDriveProgress(data.progress || 0); // Đổi từ setUploadProgress sang setDriveProgress
+      setUploadSpeed(data.speed || "");
+    });
+  }
 
-    // SỬA: Lắng nghe thêm tiến trình Backup (Cần thêm hàm này vào preload.js)
-    if (window.electronAPI?.onBackupProgress) {
-      unsubBackup = window.electronAPI.onBackupProgress((data) => {
-        setUploadProgress(data.progress || 0); // Dùng chung state progress
-        setUploadSpeed(data.message || "Đang xử lý..."); // Hiện trạng thái backup vào ô tốc độ
-      });
-    }
+  // 2. Phần Backup: Giữ nguyên cập nhật vào uploadProgress
+  if (window.electronAPI?.onBackupProgress) {
+    unsubBackup = window.electronAPI.onBackupProgress((data) => {
+      setUploadProgress(data.progress || 0); 
+      setUploadSpeed(data.message || "Đang xử lý...");
+    });
+  }
 
-    return () => {
-      if (unsubUpload) unsubUpload();
-      if (unsubBackup) unsubBackup();
-    };
-  }, []);
+  return () => {
+    if (unsubUpload) unsubUpload();
+    if (unsubBackup) unsubBackup();
+  };
+}, []);
+
 
   // Hàm xử lý khi nhấn nút "Đẩy lên Google Drive" gốc
   const handleOpenDriveSelection = () => {
@@ -241,25 +272,51 @@ const handleBackupSpecificDb = async (log) => {
     isCancelledRef.current = false;
 
     try {
+      // 1. Gọi API xuống Electron để thực hiện backup
       const result = await window.electronAPI.createSqlBackup(log);
-      if (isCancelledRef.current) return; 
+      
+      // 2. Nếu người dùng đã nhấn nút Hủy trong lúc chờ, thoát ngay
+      if (isCancelledRef.current) return { success: false, cancelled: true }; 
 
-      if (result && result.success) {
+      // 3. KIỂM TRA CHẶT CHẼ: Phải thành công VÀ phải có dữ liệu thống kê (stats)
+      if (result && result.success && result.stats) {
         setBackupStats(result);
-        setShowBackupModal(true);
+        setShowBackupModal(true); // Hiện Modal bảng dữ liệu
+
+        // Lưu lịch sử backup vào Database
         await window.electronAPI.saveBackupHistory({
           dbName: result.dbName || log.database,
           fileName: result.fileName,
-          stats: result.stats || { rowCounts: {}, version: "N/A" },
+          stats: result.stats,
           localPath: log.localPath, 
         });
-      } else {
-        showMsg(`❌ Lỗi [${log.database}]: ${result?.error}`, "error");
+
+        // Hiện thông báo xanh khi chắc chắn có dữ liệu thực
+        showMsg(`✅ Backup thành công: ${result.dbName || log.database}`, "success");
+        
+        // Trả kết quả về cho hàm cha để đếm successCount
+        return result; 
+      } 
+      else {
+        // Trường hợp lỗi ngầm (file rỗng) hoặc lỗi từ Backend
+        const errorDetail = result?.error || "Dữ liệu backup bị rỗng hoặc không lấy được thông tin bảng.";
+        showMsg(`❌ Lỗi Backup [${log.database}]: ${errorDetail}`, "error");
+        setBackupStats(null);
+        
+        // Trả về false để hàm cha không đếm bản này là thành công
+        return { success: false, error: errorDetail };
       }
+      
     } catch (err) {
-      if (!isCancelledRef.current) showMsg(`⚠️ Lỗi: ` + err.message, "error");
-    } 
-    // ❌ XÓA DÒNG setBackingUpId(null) Ở ĐÂY
+      // Bắt các lỗi crash hệ thống
+      if (!isCancelledRef.current) {
+        showMsg(`⚠️ Lỗi hệ thống: ` + err.message, "error");
+      }
+      return { success: false, error: err.message };
+    } finally {
+      // Đưa thanh progress về 0
+      setUploadProgress(0);
+    }
 };
 
   const handleCheckVersion = async (log) => {
@@ -284,10 +341,9 @@ const handleBackupSpecificDb = async (log) => {
   };
 
   // 6. Xử lý Upload nhiều file sau khi chọn từ Popup
-
   // App.jsx
   const handleUploadFiles = async (filesToUpload, targetEmails) => {
-    setUploadProgress(0);
+    setDriveProgress(0); // Đảm bảo reset từ đầu
     setUploadSpeed("Đang khởi tạo...");
     setIsLoading(true);
     setIsUploading(true);
@@ -303,13 +359,15 @@ const handleBackupSpecificDb = async (log) => {
         });
 
         if (driveResult.success) {
-          // LƯU HISTORY: Chỉ lưu 1 lần cho mỗi lượt upload lên 1 Drive
-          // Gom tên các file thành 1 chuỗi để dễ nhìn trong History
           const fileNames = filesToUpload.map((f) => f.name).join(", ");
           await window.electronAPI.saveUploadHistory({
-            fileName: fileNames, // Lưu danh sách file
+            fileName: fileNames,
             targetEmail: email,
           });
+          
+          // Sau khi xong 1 email, có thể set lên 100% tạm thời
+          setDriveProgress(100); 
+          setUploadSpeed("Hoàn tất");
         } else {
           overallSuccess = false;
           showMsg(`Lỗi upload Drive ${email}: ${driveResult.error}`, "error");
@@ -318,6 +376,7 @@ const handleBackupSpecificDb = async (log) => {
 
       if (overallSuccess) {
         await window.electronAPI.deleteTempFiles(filesToUpload);
+        //return { success: true };
         showMsg(
           `Hoàn tất đẩy file lên ${targetEmails.length} Drive.`,
           "success",
@@ -325,9 +384,20 @@ const handleBackupSpecificDb = async (log) => {
       }
     } catch (err) {
       showMsg("Lỗi hệ thống: " + err.message, "error");
+      setDriveProgress(0); // SỬA: Reset driveProgress thay vì uploadProgress
     } finally {
-      setIsLoading(false);
-      setIsUploading(false);
+      // Đợi 2 giây để người dùng thấy thanh Progress chạy đến 100% rồi mới reset
+      setTimeout(() => {
+        setIsLoading(false);
+        setIsUploading(false);
+        
+        // --- ĐOẠN QUAN TRỌNG NHẤT CẦN SỬA ---
+        setDriveProgress(0);   // SỬA: Đưa thanh tiến trình CLOUD về 0
+        setUploadProgress(0);  // Reset cả thanh backup cho chắc chắn
+        // ------------------------------------
+        
+        setUploadSpeed("Hệ thống sẵn sàng");
+      }, 2000); 
     }
   };
 
@@ -382,38 +452,46 @@ const handleBackupSpecificDb = async (log) => {
       setIsFetchingDbs(false);
     }
   };
-
-  // const handleBackupMultipleDbs = async () => {
-  //   if (selectedDbs.length === 0)
-  //     return alert("Vui lòng chọn ít nhất 1 database!");
-
-  //   setShowInputDbModal(false);
-
-  //   const limit = 2; // 🔥 số job chạy song song
-
-  //   for (let i = 0; i < selectedDbs.length; i += limit) {
-  //     const batch = selectedDbs.slice(i, i + limit);
-
-  //     await Promise.all(
-  //       batch.map((dbName) => {
-  //         const currentConfig = {
-
-  //           ...selectedLogForBackup,
-  //           database: dbName,
-  //         };
-
-  //         return handleBackupSpecificDb(currentConfig);
-  //       }),
-  //     );
-  //   }
-
-  //   setSelectedDbs([]);
-  // };
   
+//  const handleBackupMultipleDbs = async () => {
+//   if (selectedDbs.length === 0) return alert("Vui lòng chọn ít nhất 1 database!");
+//   setShowInputDbModal(false);
 
- const handleBackupMultipleDbs = async () => {
+//   for (const dbName of selectedDbs) {
+//     const currentConfig = {
+//       ...selectedLogForBackup,
+//       database: dbName,
+//       id: selectedLogForBackup.id 
+//     };
+
+//     setUploadSpeed(`Đang chuẩn bị: ${dbName}...`);
+//     await handleBackupSpecificDb(currentConfig);
+    
+//     // NẾU ĐÃ NHẤN HỦY: Thoát vòng lặp ngay lập tức, không chạy DB tiếp theo
+//     if (isCancelledRef.current) break; 
+
+//     setUploadProgress(0);
+//   }
+
+//   // CHỈ HIỆN THÔNG BÁO NẾU KHÔNG BỊ HỦY
+//   if (!isCancelledRef.current) {
+//     showMsg(`Đã hoàn thành toàn bộ ${selectedDbs.length} bản backup!`, "success");
+//   } else {
+//     showMsg("Đã dừng tiến trình backup theo yêu cầu.", "warning");
+//   }
+
+//   setBackingUpId(null); 
+//   setSelectedDbs([]);
+// };
+
+
+const handleBackupMultipleDbs = async () => {
   if (selectedDbs.length === 0) return alert("Vui lòng chọn ít nhất 1 database!");
   setShowInputDbModal(false);
+
+  // --- THÊM BIẾN ĐẾM THÀNH CÔNG ---
+  let successCount = 0;
+  let totalSelected = selectedDbs.length;
 
   for (const dbName of selectedDbs) {
     const currentConfig = {
@@ -423,25 +501,37 @@ const handleBackupSpecificDb = async (log) => {
     };
 
     setUploadSpeed(`Đang chuẩn bị: ${dbName}...`);
-    await handleBackupSpecificDb(currentConfig);
     
-    // NẾU ĐÃ NHẤN HỦY: Thoát vòng lặp ngay lập tức, không chạy DB tiếp theo
-    if (isCancelledRef.current) break; 
+    // Đợi kết quả từ hàm backup con
+    // Lưu ý: handleBackupSpecificDb cần return về result để ta kiểm tra
+    const result = await handleBackupSpecificDb(currentConfig);
+    
+    // Nếu thành công (không bị hủy và có kết quả tốt) thì tăng biến đếm
+    if (!isCancelledRef.current && result && result.success && result.stats) {
+      successCount++;
+    }
 
+    if (isCancelledRef.current) break; 
     setUploadProgress(0);
   }
 
-  // CHỈ HIỆN THÔNG BÁO NẾU KHÔNG BỊ HỦY
-  if (!isCancelledRef.current) {
-    showMsg(`Đã hoàn thành toàn bộ ${selectedDbs.length} bản backup!`, "success");
-  } else {
+  // --- SỬA LOGIC HIỆN THÔNG BÁO CUỐI CÙNG ---
+  if (isCancelledRef.current) {
     showMsg("Đã dừng tiến trình backup theo yêu cầu.", "warning");
+  } else if (successCount === totalSelected) {
+    // Tất cả đều thành công
+    showMsg(`✅ Đã hoàn thành toàn bộ ${successCount}/${totalSelected} bản backup!`, "success");
+  } else if (successCount > 0) {
+    // Thành công một phần
+    showMsg(`⚠️ Chỉ hoàn thành ${successCount}/${totalSelected} bản backup. Vui lòng kiểm tra lại các bản lỗi!`, "warning");
+  } else {
+    // Thất bại toàn bộ
+    showMsg(`❌ Không có bản backup nào thành công!`, "error");
   }
 
   setBackingUpId(null); 
   setSelectedDbs([]);
 };
-
 
 
 
@@ -773,10 +863,10 @@ const handleStopCurrentBackup = async (logId) => {
                     <CloudBackup
                       handleOpenUploadPopup={handleOpenUploadPopup}
                       isUploading={isUploading}
-                      uploadProgress={uploadProgress}
+                      uploadProgress={driveProgress}
                       uploadSpeed={uploadSpeed}
                       isLoading={isLoading}
-                      cloudSubTab={0} // Mặc định là Google Drive
+                      //cloudSubTab={0} // Mặc định là Google Drive
                     />
                   </Box>
                 )}

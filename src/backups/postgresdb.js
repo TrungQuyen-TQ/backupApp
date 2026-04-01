@@ -23,40 +23,26 @@ export async function executeSshBackup(
     const ssh = new SshClient();
     const { host, port, username, password } = sshConfig;
     const { remoteZipFile, localPath } = transferConfig;
+    let isClosed = false; // THÊM BIẾN NÀY
 
-
-    // 🔴 QUAN TRỌNG: Gửi đối tượng SSH ra ngoài main.js ngay lập tức
-    // if (onSshReady) {
-    //   onSshReady({
-    //     stop: async () => {
-    //       try {
-    //         ssh.end(); // Ngắt kết nối SSH ngay lập tức
-    //         console.log("--- Đã ngắt tiến trình SSH từ nút Hủy ---");
-    //       } catch (e) { console.error("Lỗi khi ngắt SSH:", e); }
-    //     }
-    //   });
-    // }
 
     if (onSshReady) {
       onSshReady({
         stop: async () => {
+          isClosed = true; // Đánh dấu đã đóng
           try {
-            // TRƯỚC KHI NGẮT SSH: Gửi lệnh xóa các file tạm có thể đang dở dang
-            // Lệnh này sẽ xóa cả file .bak và file .7z dựa trên đường dẫn đang chạy
-            const cleanupCmd = `rm -f ${transferConfig.remoteZipFile} ${transferConfig.remoteZipFile.replace('.7z', '.bak')}`;
-            
-            ssh.exec(cleanupCmd, () => {
-              ssh.end(); // Sau khi ra lệnh xóa thì mới đóng kết nối
-              console.log("--- Đã dọn dẹp Server và ngắt SSH ---");
-            });
-          } catch (e) { 
-            console.error("Lỗi khi dọn dẹp server:", e);
-            ssh.end(); 
-          }
+            // Kiểm tra nếu ssh vẫn còn socket kết nối thì mới gọi rm
+            if (ssh._sock && ssh._sock.writable) {
+              const cleanupCmd = `rm -f ${transferConfig.remoteZipFile} ${transferConfig.remoteZipFile.replace('.7z', '.bak')}`;
+              ssh.exec(cleanupCmd, () => { ssh.end(); });
+            } else {
+              ssh.end();
+            }
+          } catch (e) { ssh.end(); }
         }
       });
     }
-    
+
 
     ssh
       .on("ready", () => {
@@ -78,6 +64,7 @@ export async function executeSshBackup(
           stream.on("data", (data) => console.log("STDOUT: " + data));
 
           stream.on("close", (code) => {
+            if (isClosed) return; // NẾU ĐÃ HỦY THÌ THOÁT, KHÔNG CHẠY SFTP NỮA
             if (code !== 0) {
               ssh.end();
               return resolve({
@@ -88,13 +75,23 @@ export async function executeSshBackup(
             onProgress("Nén thành công. Đang bắt đầu tải file về máy...", 70);
             // Tải file nén về máy
             ssh.sftp((err, sftp) => {
-              if (err) {
+              // if (err) {
+              //   ssh.end();
+              //   return resolve({
+              //     success: false,
+              //     error: "SFTP Error: " + err.message,
+              //   });
+              // }
+
+              if (err || isClosed) {
                 ssh.end();
                 return resolve({
                   success: false,
-                  error: "SFTP Error: " + err.message,
+                  error: isClosed ? "Tiến trình bị hủy bởi người dùng" : "SFTP Error: " + err.message
                 });
-              }
+              } // <--- Bạn thiếu dấu này dẫn đến code bên dưới bị lỗi
+
+
 
               sftp.fastGet(remoteZipFile, localPath, {}, (downloadErr) => {
                 if (downloadErr) {
@@ -104,6 +101,16 @@ export async function executeSshBackup(
                     error: "Download Error: " + downloadErr.message,
                   });
                 }
+
+
+                // Kiểm tra dung lượng file để tránh báo thành công giả (như mình đã gợi ý trước đó)
+                const stats = fs.statSync(localPath);
+                if (stats.size < 200) {
+                  ssh.end();
+                  return resolve({ success: false, error: "Lỗi: File backup tạo ra bị rỗng (0 bytes)." });
+                }
+
+
                 onProgress("Đang dọn dẹp file tạm trên Server...", 98);
                 // Xóa file trên server sau khi kéo về thành công
                 sftp.unlink(remoteZipFile, () => {
@@ -165,7 +172,7 @@ async function getDatabaseStats(client, dbName) {
 
 export async function universalBackupHandler(formData, event, onSshReady) {
   console.log("Backup Config Received:", formData);
-  
+
   const sendProgress = (msg, percent) => {
     if (event) {
       event.sender.send("backup-progress", { message: msg, progress: percent });
@@ -178,7 +185,7 @@ export async function universalBackupHandler(formData, event, onSshReady) {
   const localDir = formData.localPath;
   const dbName = formData.database;
   const dbType = formData.dbType;
-  
+
   // 1. Đọc mật khẩu Zip
   const passwordPath = path.join(process.cwd(), "configs", "passwordzip.json");
   let backupPassword = "admin123";
@@ -194,11 +201,11 @@ export async function universalBackupHandler(formData, event, onSshReady) {
   // 2. CHUẨN BỊ BIẾN CƠ BẢN
   const safeDbPass = JSON.stringify(formData.dbPassword);
   const safeZipPass = JSON.stringify(backupPassword);
-  
+
   // Mặc định remoteBase ở /tmp, riêng SQL Server sẽ ghi đè lại trong case
   let remoteBase = `/tmp/backup_${dbType}_${dbName}_${timestamp}`;
   let remoteZipFile = `${remoteBase}.7z`;
-  
+
   const finalFileName = `backup_${dbType}_${dbName}_${timestamp}.7z`;
   const fullLocalPath = path.join(localDir, finalFileName);
 
@@ -282,11 +289,11 @@ export async function universalBackupHandler(formData, event, onSshReady) {
     case "sqlserver": {
       // Đổi sang thư mục mssql data để tránh lỗi Permission 31
       // 1. Phải khai báo biến sqlPath ở đây
-      const sqlPath = "/opt/mssql-tools18/bin/sqlcmd"; 
+      const sqlPath = "/opt/mssql-tools18/bin/sqlcmd";
 
       const remoteBaseMssql = `/var/opt/mssql/data/backup_${dbName}_${timestamp}`;
       const remoteFile = `${remoteBaseMssql}.bak`;
-      const remoteZipFileSql = `${remoteBaseMssql}.7z`; 
+      const remoteZipFileSql = `${remoteBaseMssql}.7z`;
 
       transferConfig.remoteZipFile = remoteZipFileSql;
 
@@ -311,7 +318,7 @@ export async function universalBackupHandler(formData, event, onSshReady) {
         await mssql.close();
       } catch (err) {
         console.error("SQL Server Stats Error:", err.message);
-        try { await mssql.close(); } catch (e) {}
+        try { await mssql.close(); } catch (e) { }
       }
       break;
     }
