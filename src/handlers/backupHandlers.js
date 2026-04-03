@@ -3,9 +3,9 @@ import { backupMySQL } from "../backups/mysql.js";
 import { backupMongoDB } from "../backups/mongodb.js";
 import { universalBackupHandler } from "../backups/postgresdb.js";
 export const backupHandlers = {
-  sqlserver: universalBackupHandler,
+  postgres: universalBackupHandler,
+  postgresql: universalBackupHandler, // Dự phòng cả 2 tên
   mysql: universalBackupHandler,
   mongodb: universalBackupHandler,
-  postgresql: universalBackupHandler
-
+  sqlserver: universalBackupHandler
 };

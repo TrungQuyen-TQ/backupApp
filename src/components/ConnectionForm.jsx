@@ -69,18 +69,18 @@ const FormRow = ({
       InputProps={
         type === "password"
           ? {
-              endAdornment: (
-                <InputAdornment position="end">
-                  <IconButton
-                    onClick={() => setShowPass(!showPass)}
-                    size="small"
-                    edge="end"
-                  >
-                    {showPass ? <VisibilityOff /> : <Visibility />}
-                  </IconButton>
-                </InputAdornment>
-              ),
-            }
+            endAdornment: (
+              <InputAdornment position="end">
+                <IconButton
+                  onClick={() => setShowPass(!showPass)}
+                  size="small"
+                  edge="end"
+                >
+                  {showPass ? <VisibilityOff /> : <Visibility />}
+                </IconButton>
+              </InputAdornment>
+            ),
+          }
           : undefined
       }
     />
@@ -111,27 +111,27 @@ export const ConnectionForm = ({ formData, setFormData, onConnectSuccess }) => {
   };
 
   const generateLabel = (data) => {
-  const dbName = data.dbType || "DB";
-  return `${dbName.toUpperCase()} (${data.server})`;
-};
-
-  const handleSaveConfig = async (currentData) => {
-  const configToSave = {
-    ...currentData,
-    label: generateLabel(currentData) // Render label theo quy tắc bạn muốn
+    const dbName = data.dbType || "DB";
+    return `${dbName.toUpperCase()} (${data.server})`;
   };
 
-  try {
-    // Gọi API của Electron để ghi file
-    const result = await window.electronAPI.saveLoginConfig(configToSave);
-    if (result.success) {
-      console.log("Đã lưu cấu hình thành công!");
-      // Bạn có thể reload lại dataConfig ở đây nếu cần
+  const handleSaveConfig = async (currentData) => {
+    const configToSave = {
+      ...currentData,
+      label: generateLabel(currentData) // Render label theo quy tắc bạn muốn
+    };
+
+    try {
+      // Gọi API của Electron để ghi file
+      const result = await window.electronAPI.saveLoginConfig(configToSave);
+      if (result.success) {
+        console.log("Đã lưu cấu hình thành công!");
+        // Bạn có thể reload lại dataConfig ở đây nếu cần
+      }
+    } catch (err) {
+      console.error("Lỗi khi lưu file:", err);
     }
-  } catch (err) {
-    console.error("Lỗi khi lưu file:", err);
-  }
-};
+  };
 
   const handleLoginDbClick = async () => {
     setIsLoading(true); // Bật loading
@@ -281,13 +281,97 @@ export const ConnectionForm = ({ formData, setFormData, onConnectSuccess }) => {
             variant="contained"
             disabled={isLoading}
             onClick={handleNextStep}
-            sx={{ py: 1.2, fontWeight: "bold" }}
+            sx={{
+              py: 1.5,
+              borderRadius: "14px",
+              fontWeight: "800",
+              fontSize: "1rem",
+              textTransform: "uppercase",
+              letterSpacing: "1.5px",
+              position: "relative",
+              overflow: "hidden",
+              transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
+              color: "#fff !important", // Ép màu chữ trắng kể cả khi disabled
+
+              // --- GRADIENT LUÔN CHẠY BẤT CHẤP LOADING ---
+              backgroundSize: "200% 200%",
+              backgroundImage: isLoading
+                ? "linear-gradient(135deg, #00d2ff 0%, #3a7bd5 50%, #00d2ff 100%) !important" // Giữ màu xanh neon khi load
+                : "linear-gradient(135deg, #00d2ff 0%, #3a7bd5 50%, #00d2ff 100%)",
+
+              // Animation không bao giờ dừng
+              animation: "blueGradientMove 3s ease infinite",
+
+              "@keyframes blueGradientMove": {
+                "0%": { backgroundPosition: "0% 50%" },
+                "50%": { backgroundPosition: "100% 50%" },
+                "100%": { backgroundPosition: "0% 50%" },
+              },
+
+              // --- HIỆU ỨNG PHÁT SÁNG KHI ĐANG LOAD ---
+              boxShadow: isLoading
+                ? "0 0 20px rgba(0, 210, 255, 0.6), 0 0 40px rgba(0, 210, 255, 0.2)"
+                : "0 4px 15px rgba(0, 210, 255, 0.3)",
+
+              // Đảm bảo hover vẫn có filter khi không bị khóa
+              "&:hover": {
+                transform: !isLoading ? "translateY(-3px)" : "none",
+                filter: "brightness(1.1)",
+              },
+
+              // --- CẤU HÌNH QUAN TRỌNG ĐỂ VƯỢT QUA DISABLED THÔ KỆCH ---
+              "&.Mui-disabled": {
+                opacity: 1, // Không cho phép làm mờ nút
+                cursor: "not-allowed",
+                // Lớp phủ tối nhẹ để làm nổi bật vòng xoay nhưng vẫn thấy gradient chạy bên dưới
+                "&::before": {
+                  content: '""',
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  backgroundColor: "rgba(0, 0, 0, 0.15)",
+                  zIndex: 0,
+                }
+              }
+            }}
           >
             {isLoading ? (
-              <CircularProgress size={24} color="inherit" />
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+                <CircularProgress
+                  size={20}
+                  color="inherit"
+                  thickness={6}
+                  sx={{
+                    filter: "drop-shadow(0 0 5px rgba(255,255,255,0.5))"
+                  }}
+                />
+                <Typography
+                  variant="button"
+                  sx={{
+                    fontWeight: 800,
+                    letterSpacing: "1px",
+                    animation: "pulseText 1.5s infinite"
+                  }}
+                >
+                  Đang xử lý...
+                </Typography>
+              </Box>
             ) : (
               "Đăng Nhập"
             )}
+
+            {/* Hiệu ứng xung nhịp cho chữ khi loading */}
+            <style>
+              {`
+                @keyframes pulseText {
+                  0% { opacity: 0.6; }
+                  50% { opacity: 1; }
+                  100% { opacity: 0.6; }
+                }
+              `}
+            </style>
           </Button>
         </Box>
       )}
@@ -351,7 +435,73 @@ export const ConnectionForm = ({ formData, setFormData, onConnectSuccess }) => {
               startIcon={<ArrowBackIcon />}
               onClick={() => {
                 setErrorMsg(""); // Reset lỗi khi quay lại
-                setStep(1);
+                setStep(1); //
+              }}
+              sx={{
+                py: 1.2,
+                borderRadius: "12px",
+                fontWeight: "800",
+                textTransform: "none",
+                fontSize: "0.9rem",
+                color: "#64748b", // Màu xám xanh hiện đại
+                position: "relative",
+                border: "2px solid #e2e8f0", // Viền mặc định mảnh
+                transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
+                bgcolor: "transparent",
+                overflow: "hidden",
+
+                // --- HIỆU ỨNG HOVER BIẾN HÌNH ---
+                "&:hover": {
+                  color: "#1976d2",
+                  border: "2px solid transparent", // Làm trong suốt viền thật để hiện viền gradient
+                  transform: "translateX(-5px)", // Nhích nhẹ sang trái tạo cảm giác "quay lại"
+                  bgcolor: "rgba(25, 118, 210, 0.04)",
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.05)",
+
+                  // Hiệu ứng icon rung nhẹ
+                  "& .MuiButton-startIcon": {
+                    animation: "moveLeft 0.5s infinite alternate",
+                  },
+                },
+
+                // --- ANIMATION CHO ICON QUAY LẠI ---
+                "@keyframes moveLeft": {
+                  "0%": { transform: "translateX(0)" },
+                  "100%": { transform: "translateX(-3px)" }
+                },
+
+                // --- LỚP PHỦ GRADIENT KHI HOVER (VIỀN CHẠY) ---
+                "&::before": {
+                  content: '""',
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  borderRadius: "12px",
+                  padding: "2px", // Độ dày của viền gradient
+                  background: "linear-gradient(135deg, #64748b 0%, #1976d2 50%, #64748b 100%)",
+                  mask: "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
+                  maskComposite: "exclude",
+                  WebkitMaskComposite: "destination-out",
+                  opacity: 0,
+                  transition: "opacity 0.4s",
+                },
+
+                "&:hover::before": {
+                  opacity: 1,
+                  animation: "borderRotate 2s linear infinite",
+                },
+
+                "@keyframes borderRotate": {
+                  "0%": { filter: "hue-rotate(0deg)" },
+                  "100%": { filter: "hue-rotate(360deg)" }
+                },
+
+                // Hiệu ứng click
+                "&:active": {
+                  transform: "scale(0.96) translateX(-5px)",
+                }
               }}
             >
               Quay lại
@@ -360,17 +510,75 @@ export const ConnectionForm = ({ formData, setFormData, onConnectSuccess }) => {
             <Button
               fullWidth
               variant="contained"
-              color="success"
-              // 1. Thêm startIcon (ẩn đi khi đang load để tránh rối mắt)
               startIcon={!isLoading ? <LoginIcon /> : null}
-              // 2. Disable nút khi đang loading
               disabled={isLoading}
               onClick={handleLoginDbClick}
-              sx={{ py: 1.2, fontWeight: "bold" }} // Đồng bộ padding với nút bên dưới
+              sx={{
+                py: 1.2,
+                borderRadius: "12px",
+                fontWeight: "800",
+                fontSize: "0.95rem",
+                textTransform: "uppercase",
+                letterSpacing: "1px",
+                position: "relative",
+                overflow: "hidden",
+                transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
+                color: "#fff",
+                border: "none",
+                boxShadow: "0 4px 15px rgba(16, 185, 129, 0.3)",
+
+                // --- GRADIENT XANH LÁ NEON CHUYỂN ĐỘNG ---
+                backgroundSize: "200% 200%",
+                backgroundImage: isLoading
+                  ? "linear-gradient(45deg, #10b981, #059669, #10b981)" // Đậm hơn khi loading
+                  : "linear-gradient(135deg, #10b981 0%, #34d399 50%, #10b981 100%)",
+
+                // Animation chỉ chạy khi không loading để người dùng tập trung vào vòng xoay
+                animation: !isLoading ? "greenGradientMove 3s ease infinite" : "none",
+
+                "@keyframes greenGradientMove": {
+                  "0%": { backgroundPosition: "0% 50%" },
+                  "50%": { backgroundPosition: "100% 50%" },
+                  "100%": { backgroundPosition: "0% 50%" },
+                },
+
+                // --- HIỆU ỨNG KHI HOVER ---
+                "&:hover": {
+                  transform: "translateY(-3px) scale(1.01)",
+                  filter: "brightness(1.1)",
+                  boxShadow: "0 10px 25px rgba(16, 185, 129, 0.5)",
+                  "&::after": {
+                    left: "100%",
+                  },
+                },
+
+                // --- HIỆU ỨNG ÁNH KIM (SHINE EFFECT) ---
+                "&::after": {
+                  content: '""',
+                  position: "absolute",
+                  top: 0,
+                  left: "-100%",
+                  width: "100%",
+                  height: "100%",
+                  background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)",
+                  transition: "all 0.6s",
+                },
+
+                // Khi bị Disable (Loading)
+                "&.Mui-disabled": {
+                  background: "#d1d5db",
+                  color: "#9ca3af",
+                  boxShadow: "none",
+                },
+
+                // Hiệu ứng click
+                "&:active": {
+                  transform: "scale(0.98)",
+                }
+              }}
             >
-              {/* 3. Logic hiển thị CircularProgress hoặc Text */}
               {isLoading ? (
-                <CircularProgress size={24} color="inherit" />
+                <CircularProgress size={24} color="inherit" thickness={5} />
               ) : (
                 "Lựa chọn"
               )}

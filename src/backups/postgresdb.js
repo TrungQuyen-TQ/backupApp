@@ -59,17 +59,23 @@ export async function executeSshBackup(
 
           let stderr = "";
           stream.stderr.on("data", (data) => {
-            stderr += data.toString();
+            const msg = data.toString();
+            stderr += msg;
+            console.error("SERVER STDERR:", msg); // <--- THÊM DÒNG NÀY: In lỗi từ Postgres/7zip
           });
-          stream.on("data", (data) => console.log("STDOUT: " + data));
+          
+          stream.on("data", (data) => {
+            console.log("SERVER STDOUT:", data.toString()); // <--- THÊM DÒNG NÀY: In thông báo thành công
+          });
 
           stream.on("close", (code) => {
+            console.log("SSH Process exited with code:", code); // <--- THÊM DÒNG NÀY: Kiểm tra code thoát
             if (isClosed) return; // NẾU ĐÃ HỦY THÌ THOÁT, KHÔNG CHẠY SFTP NỮA
             if (code !== 0) {
               ssh.end();
               return resolve({
                 success: false,
-                error: `Lỗi Server (Code ${code}): ${stderr}`,
+                error: `Lỗi Server (Code ${code}): ${stderr || "Nhiều khả năng sai đường dẫn file hoặc lệnh nén thất bại"}`,
               });
             }
             onProgress("Nén thành công. Đang bắt đầu tải file về máy...", 70);
@@ -105,7 +111,7 @@ export async function executeSshBackup(
 
                 // Kiểm tra dung lượng file để tránh báo thành công giả (như mình đã gợi ý trước đó)
                 const stats = fs.statSync(localPath);
-                if (stats.size < 200) {
+                if (stats.size < 10) {
                   ssh.end();
                   return resolve({ success: false, error: "Lỗi: File backup tạo ra bị rỗng (0 bytes)." });
                 }
@@ -202,16 +208,14 @@ export async function universalBackupHandler(formData, event, onSshReady) {
   const safeDbPass = JSON.stringify(formData.dbPassword);
   const safeZipPass = JSON.stringify(backupPassword);
 
-  // Mặc định remoteBase ở /tmp, riêng SQL Server sẽ ghi đè lại trong case
-  let remoteBase = `/tmp/backup_${dbType}_${dbName}_${timestamp}`;
-  let remoteZipFile = `${remoteBase}.7z`;
-
-  const finalFileName = `backup_${dbType}_${dbName}_${timestamp}.7z`;
+  // TẠO TÊN FILE THỐNG NHẤT NGAY TẠI ĐÂY
+  const baseName = `backup_${dbType}_${dbName}_${timestamp}`;
+  const remoteZipFile = `/tmp/${baseName}.7z`; 
+  const finalFileName = `${baseName}.7z`;
   const fullLocalPath = path.join(localDir, finalFileName);
 
-  // --- QUAN TRỌNG: KHỞI TẠO transferConfig TRƯỚC KHI VÀO SWITCH CASE ---
   const transferConfig = {
-    remoteZipFile: remoteZipFile, // Sẽ được cập nhật lại nếu là SQL Server
+    remoteZipFile: remoteZipFile,
     localPath: fullLocalPath,
   };
 
@@ -228,10 +232,26 @@ export async function universalBackupHandler(formData, event, onSshReady) {
   }
 
   // 4. SWITCH CASE THEO LOẠI DB
-  switch (dbType) {
-    case "postgres": {
-      const remoteFile = `${remoteBase}.sql`;
-      mainCommand = `export PGPASSWORD=${safeDbPass} && pg_dump -h localhost -U ${formData.dbUser} -d ${dbName} -f ${remoteFile} && (7za a -p${safeZipPass} -mhe=on ${remoteZipFile} ${remoteFile} || 7z a -p${safeZipPass} -mhe=on ${remoteZipFile} ${remoteFile}) && rm -f ${remoteFile}`;
+  switch (dbType.toLowerCase()) {
+    //case "postgres": 
+    case "postgresql":{
+      // 1. Ép kiểu đường dẫn tuyệt đối trong /tmp để SFTP luôn tìm thấy
+      
+
+      const baseName = `backup_pg_${dbName}_${timestamp}`;
+      const remoteFile = `/tmp/${baseName}.sql`;
+      const remoteZipFileSql = `/tmp/${baseName}.7z`;
+
+      // // 2. CẬP NHẬT QUAN TRỌNG: Gán lại cho 
+
+      
+
+      transferConfig.remoteZipFile = remoteZipFileSql;
+
+
+      // 3. Lệnh SSH: Dump -> Nén -> Xóa file SQL gốc
+      
+      mainCommand = `export PGPASSWORD=${safeDbPass} && pg_dump -h localhost -U "${formData.dbUser}" -d "${dbName}" -f "${remoteFile}" && 7za a -p${safeZipPass} -mhe=on "${remoteZipFileSql}" "${remoteFile}" && rm -f "${remoteFile}"`;
 
       const pgClient = new Client({
         host: formData.server,
@@ -240,11 +260,15 @@ export async function universalBackupHandler(formData, event, onSshReady) {
         password: formData.dbPassword,
         database: dbName,
       });
+
       try {
         await pgClient.connect();
         dbStats = await getDatabaseStats(pgClient, dbName);
         await pgClient.end();
-      } catch (err) { console.error("Stats fail:", err.message); }
+      } catch (err) {
+        console.error("Stats fail:", err.message);
+        // Nếu lỗi stats, dbStats vẫn giữ giá trị mặc định {rowCounts: {}} đã khai báo ở trên
+      }
       break;
     }
 

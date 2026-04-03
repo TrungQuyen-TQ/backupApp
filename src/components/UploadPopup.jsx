@@ -10,6 +10,7 @@ import {
   Typography,
   CircularProgress,
   ListItemButton,
+  Skeleton, // <--- THÊM CHỮ NÀY VÀO ĐÂY
   LinearProgress,
   FormControl,
   InputLabel,
@@ -126,17 +127,29 @@ const UploadPanel = ({ onUpload, showMsg, formdata }) => {
     else setSelectedFiles(files.map((f) => f.name));
   };
 
+  const [isDriveError, setIsDriveError] = useState(false);
+
   const handleUploadClick = async () => { // SỬA: Thêm async ở đây
+
+    if (targetEmails.length === 0) {
+      setIsDriveError(true); // Bật viền đỏ
+      showMsg("Vui lòng chọn ít nhất một Drive!", "error"); // Thông báo bạn đã có
+      return;
+    }
+
+    setIsDriveError(false); // Tắt lỗi nếu đã chọn
+
+
     if (selectedFiles.length === 0) return showMsg("Vui lòng chọn ít nhất 1 file", "warning");
     if (uploadTarget === "drive" && targetEmails.length === 0) return showMsg("Vui lòng chọn Drive đích", "warning");
 
     const filesToUpload = files.filter((f) => selectedFiles.includes(f.name));
-    
+
     // 1. Chờ quá trình upload hoàn tất (onUpload cần là một async function từ App.jsx)
     try {
       setIsLoading(true); // Hiển thị loading trong khi chờ dọn dẹp
       await onUpload(filesToUpload, targetEmails);
-      
+
       // 2. Sau khi upload và server xóa file xong, ta gọi lại loadFiles để cập nhật UI
       // Thêm một chút delay nhỏ (khoảng 500ms) để đảm bảo ổ cứng đã kịp cập nhật trạng thái xóa
       setTimeout(async () => {
@@ -156,7 +169,69 @@ const UploadPanel = ({ onUpload, showMsg, formdata }) => {
       <Typography variant="h6" sx={{ mb: 2, fontWeight: "bold" }}></Typography>
 
       {isLoading ? (
-        <CircularProgress />
+        <Box sx={{ width: '100%', p: 3, bgcolor: '#fbfcfd', borderRadius: '16px' }}>
+          {/* Định nghĩa CSS Animation Keyframes - Đặt 1 lần ở đầu */}
+          <style>
+            {`
+        @keyframes subtlePulse {
+          0% { opacity: 0.6; transform: scale(1); }
+          50% { opacity: 1; transform: scale(1.01); }
+          100% { opacity: 0.6; transform: scale(1); }
+        }
+        @keyframes meshGradient {
+          0% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
+        }
+      `}
+          </style>
+
+          {/* Header Skeleton - Tĩnh, không cần animation để làm điểm tựa thị giác */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2.5, mb: 3, pb: 1.5, borderBottom: "1px solid #edf2f7" }}>
+            <Skeleton variant="rectangular" width={28} height={28} sx={{ borderRadius: '8px', bgcolor: '#e2e8f0' }} />
+            <Skeleton variant="text" width="30%" height={35} sx={{ bgcolor: '#e2e8f0' }} />
+            <Box sx={{ flexGrow: 1 }} />
+            <Skeleton variant="text" width={90} height={30} sx={{ bgcolor: '#e2e8f0' }} />
+            <Skeleton variant="text" width={70} height={30} sx={{ bgcolor: '#e2e8f0' }} />
+          </Box>
+
+          {/* List Items Skeleton - Nơi chứa hiệu ứng "thở" Mesh Gradient */}
+          {[...Array(6)].map((_, index) => (
+            <Box key={index} sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 2.5,
+              py: 2,
+              borderBottom: "1px solid #f7fafc",
+              // Hiệu ứng mạch đập nhẹ cho cả dòng
+              animation: `subtlePulse 2s infinite ease-in-out`,
+              animationDelay: `${index * 0.15}s`, // Tạo hiệu ứng gợn sóng lăn tăn
+            }}>
+              {/* Icon/Checkbox giả lập với nền Mesh Gradient */}
+              <Box sx={{
+                width: 28, height: 28, borderRadius: '8px',
+                backgroundSize: '200% 200%',
+                backgroundImage: 'linear-gradient(135deg, #e2e8f0 0%, #c7d2fe 50%, #e2e8f0 100%)',
+                animation: 'meshGradient 4s infinite ease-in-out'
+              }} />
+
+              <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                {/* Thanh tên file với nền Mesh Gradient Blue Neon mờ */}
+                <Box sx={{
+                  width: '60%', height: 20, borderRadius: '6px',
+                  backgroundSize: '200% 200%',
+                  backgroundImage: 'linear-gradient(90deg, #edf2f7 0%, #a5f3fc 50%, #edf2f7 100%)',
+                  animation: 'meshGradient 3s infinite ease-in-out',
+                  animationDelay: '0.5s'
+                }} />
+                <Skeleton variant="text" width="20%" height={15} sx={{ bgcolor: '#edf2f7' }} />
+              </Box>
+
+              <Skeleton variant="text" width={90} height={25} sx={{ bgcolor: '#edf2f7' }} />
+              <Skeleton variant="text" width={70} height={25} sx={{ bgcolor: '#edf2f7' }} />
+            </Box>
+          ))}
+        </Box>
       ) : (
         <List>
           {/* Header */}
@@ -234,32 +309,80 @@ const UploadPanel = ({ onUpload, showMsg, formdata }) => {
 
       {uploadTarget === "drive" ? (
         <Box sx={{ mt: 2 }}>
-          <FormControl fullWidth size="small">
-            <InputLabel>Drive</InputLabel>
+          <FormControl
+            fullWidth
+            size="small"
+            error={isDriveError} // Kích hoạt trạng thái lỗi của MUI
+          >
+            <InputLabel
+              sx={{
+                // Chữ "Drive" cũng sẽ đổi màu khi có lỗi
+                color: isDriveError ? "#d32f2f" : "inherit",
+                "&.Mui-focused": { color: isDriveError ? "#d32f2f" : "primary.main" }
+              }}
+            >
+              Drive
+            </InputLabel>
             <Select
               multiple
               value={targetEmails}
-              onChange={handleEmailChange}
+              onChange={(e) => {
+                handleEmailChange(e);
+                if (e.target.value.length > 0) setIsDriveError(false); // Tự động tắt đỏ khi người dùng bắt đầu chọn
+              }}
               input={<OutlinedInput label="Drive" />}
               renderValue={(selected) => (
                 <Box sx={{ display: "flex", gap: 0.5, flexWrap: "wrap" }}>
                   {selected.map((v) => (
-                    <Chip key={v} label={v} size="small" />
+                    <Chip
+                      key={v}
+                      label={v}
+                      size="small"
+                      sx={{
+                        bgcolor: "rgba(25, 118, 210, 0.1)",
+                        fontWeight: "bold",
+                        borderRadius: "6px"
+                      }}
+                    />
                   ))}
                 </Box>
               )}
               MenuProps={MenuProps}
+              sx={{
+                borderRadius: "10px",
+                transition: "all 0.3s ease",
+                // --- CSS CUSTOM VIỀN ĐỎ NEON KHI LỖI ---
+                "& .MuiOutlinedInput-notchedOutline": {
+                  borderWidth: isDriveError ? "2px" : "1px",
+                  borderColor: isDriveError ? "#d32f2f !important" : "rgba(0, 0, 0, 0.23)",
+                  boxShadow: isDriveError ? "0 0 10px rgba(211, 47, 47, 0.2)" : "none",
+                },
+                "&:hover .MuiOutlinedInput-notchedOutline": {
+                  borderColor: isDriveError ? "#b71c1c !important" : "primary.main",
+                },
+                "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
+                  boxShadow: isDriveError ? "0 0 12px rgba(211, 47, 47, 0.3)" : "0 0 8px rgba(25, 118, 210, 0.2)",
+                }
+              }}
             >
               {driveAccounts.map((acc) => (
                 <MenuItem
                   key={acc.email}
                   value={acc.email}
                   style={getStyles(acc.email, targetEmails, theme)}
+                  sx={{ borderRadius: "8px", mx: 1, my: 0.5 }}
                 >
                   {acc.label} ({acc.email})
                 </MenuItem>
               ))}
             </Select>
+
+            {/* Hiển thị dòng text nhỏ bên dưới nếu muốn chuyên nghiệp hơn nữa */}
+            {isDriveError && (
+              <Typography variant="caption" sx={{ color: "#d32f2f", mt: 0.5, ml: 1, fontWeight: "bold" }}>
+                * Bắt buộc chọn nơi lưu trữ
+              </Typography>
+            )}
           </FormControl>
         </Box>
       ) : (
@@ -270,7 +393,74 @@ const UploadPanel = ({ onUpload, showMsg, formdata }) => {
         </Typography>
       )}
       <Box sx={{ mt: 2, display: "flex", justifyContent: "flex-end", gap: 1 }}>
-        <Button variant="contained" onClick={handleUploadClick}>
+        <Button
+          variant="contained"
+          onClick={handleUploadClick}
+          sx={{
+            borderRadius: '12px',
+            px: 4,
+            py: 1.2,
+            fontWeight: '800',
+            textTransform: 'uppercase',
+            letterSpacing: '1px',
+            color: '#fff',
+            position: 'relative',
+            overflow: 'hidden',
+            transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+            zIndex: 1,
+
+            // --- GRADIENT XANH NEON CHẠY LIÊN TỤC ---
+            backgroundSize: '200% 200%',
+            backgroundImage: 'linear-gradient(135deg, #00f2fe 0%, #4facfe 50%, #00f2fe 100%)',
+            animation: 'neonFlow 3s ease infinite',
+
+            '@keyframes neonFlow': {
+              '0%': { backgroundPosition: '0% 50%' },
+              '50%': { backgroundPosition: '100% 50%' },
+              '100%': { backgroundPosition: '0% 50%' },
+            },
+
+            // --- HIỆU ỨNG PHÁT SÁNG (GLOW) ---
+            boxShadow: '0 4px 15px rgba(0, 242, 254, 0.4)',
+
+            // --- HIỆU ỨNG KHI HOVER (LUNG LINH) ---
+            '&:hover': {
+              transform: 'translateY(-3px) scale(1.02)',
+              boxShadow: '0 8px 25px rgba(0, 242, 254, 0.6)',
+              filter: 'brightness(1.1)',
+
+              // Hiện vệt sáng quét qua khi hover
+              '&::after': {
+                left: '100%',
+              }
+            },
+
+            // --- VỆT SÁNG KIM LOẠI (SHINE EFFECT) ---
+            '&::after': {
+              content: '""',
+              position: 'absolute',
+              top: 0,
+              left: '-100%',
+              width: '100%',
+              height: '100%',
+              background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)',
+              transition: 'all 0.6s ease-in-out',
+              zIndex: -1,
+            },
+
+            // Hiệu ứng khi click (nhấn nút)
+            '&:active': {
+              transform: 'scale(0.95)',
+            },
+
+            // Style cho phần số lượng file trong ngoặc (length)
+            '& span': {
+              marginLeft: '5px',
+              fontSize: '0.85rem',
+              opacity: 0.9
+            }
+          }}
+        >
           Upload ({selectedFiles.length})
         </Button>
       </Box>
