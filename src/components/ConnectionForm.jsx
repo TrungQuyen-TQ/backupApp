@@ -93,11 +93,42 @@ const dbOptions = [
   { label: "MongoDB", value: "mongodb", port: "27017" },
   { label: "PostgreSQL", value: "postgresql", port: "5432" },
 ];
-export const ConnectionForm = ({ formData, setFormData, onConnectSuccess }) => {
+export const ConnectionForm = ({ formData, setFormData, onConnectSuccess, showMsg, onLoginSuccess, initialData }) => {
   const [step, setStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+
   const [serverOptions, setServerOptions] = useState([]);
+
+console.log(">>> [Form] Props nhận được:", { initialData })
+
+  // LẤY DỮ LIỆU ĐỘNG KHI MỞ TAB
+  useEffect(() => {
+    const fetchConfigs = async () => {
+      const res = await window.electronAPI.getLoginConfigs();
+      if (res && res.serverConfigs) {
+        setServerOptions(res.serverConfigs);
+      }
+    };
+    fetchConfigs();
+  }, []);
+
+
+  // ConnectionForm.jsx
+  // Thay thế đoạn useEffect xử lý initialData cũ bằng đoạn này:
+  useEffect(() => {
+    if (initialData) {
+      console.log(">>> [Form] Phát hiện có dữ liệu server mới:", initialData);
+      setFormData(initialData);
+      const timer = setTimeout(() => {
+        console.log(">>> [Form] Đang tự động kích hoạt handleNextStep...");
+        handleNextStep();
+      }, 500);
+      return () => clearTimeout(timer); // Thêm cái này để xóa bộ nhớ đệm, giúp App mượt hơn.
+    }
+  }, [initialData]);
+
+
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -184,7 +215,7 @@ export const ConnectionForm = ({ formData, setFormData, onConnectSuccess }) => {
           <Autocomplete
             freeSolo
             // Sử dụng dữ liệu từ file info.json đã import
-            options={dataConfig.serverConfigs || []}
+            options={serverOptions}
             // Xác định cách hiển thị nhãn trong danh sách thả xuống
             getOptionLabel={(option) => {
               if (typeof option === "string") return option;
@@ -228,12 +259,12 @@ export const ConnectionForm = ({ formData, setFormData, onConnectSuccess }) => {
                 placeholder="Chọn cấu hình hoặc nhập IP..."
                 variant="outlined"
                 fullWidth
-                // Đảm bảo icon server hiển thị ở đầu ô nhập nếu muốn (tùy chọn)
                 InputProps={{
                   ...params.InputProps,
                   startAdornment: (
-                    <InputAdornment position="start">
+                    <InputAdornment position="start" sx={{ pl: 1 }}>
                       <ServerIcon fontSize="small" color="action" />
+                      {params.InputProps.startAdornment}
                     </InputAdornment>
                   ),
                 }}

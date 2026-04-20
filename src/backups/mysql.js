@@ -84,7 +84,7 @@ export async function backupMySQL(dbConfig, event) {
     });
 
     sendProgress("Đang lấy thống kê bảng dữ liệu...", 25);
-    const stats = await getDatabaseStats(connection, dbConfig.database);
+    const stats = await getMysqlStats(connection, dbConfig.database);
     await connection.end();
 
     // 4. Kết nối SSH

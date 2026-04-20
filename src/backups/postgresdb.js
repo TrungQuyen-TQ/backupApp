@@ -1,382 +1,269 @@
 import fs from "fs";
 import path from "path";
 import { Client as SshClient } from "ssh2";
-import { Client } from "pg";
+import { Client as PgClient } from "pg";
 import mysql from "mysql2/promise";
-import { getMysqlStats } from "./mysql.js";
 import { MongoClient } from "mongodb";
 import mssql from "mssql";
-import { getSqlServerStats } from "./sqlserver.js";
-import { getMongoStats } from "./mongodb.js";
+import { getMysqlStats } from "./mysql.js";
 
-/**
- * Hàm thực thi SSH dùng chung cho mọi loại Database
- */
-export async function executeSshBackup(
-  sshConfig,
-  transferConfig,
-  mainCommand,
-  onProgress,
-  onSshReady // <--- THÊM THAM SỐ NÀY ĐỂ NHẬN CALLBACK TỪ TRÊN XUỐNG
-) {
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, "'\\''")}'`;
+}
+
+// --- CÁC HÀM LẤY PHIÊN BẢN (SIÊU NHANH) ---
+async function getPgVersion(client) {
+  const res = await client.query("SELECT version();");
+  return { shortVersion: res.rows[0].version.split(" ")[1], rowCounts: {} };
+}
+
+async function getMysqlVersion(connection) {
+  const [rows] = await connection.query("SELECT VERSION() as version");
+  return { shortVersion: rows[0].version, rowCounts: {} };
+}
+
+async function getMongoVersion(client) {
+  const admin = client.db("admin");
+  const status = await admin.command({ serverStatus: 1 });
+  return { shortVersion: status.version, rowCounts: {} };
+}
+
+async function getSqlServerVersion(pool) {
+  const res = await pool.request().query("SELECT @@VERSION as version");
+  return { shortVersion: res.recordset[0].version.split("-")[0].trim(), rowCounts: {} };
+}
+
+// --- HÀM THỰC THI SSH ---
+// --- HÀM THỰC THI SSH (BẢN FIX ĐỢI NÉN FILE LỚN) ---
+export async function executeSshBackup(sshConfig, transferConfig, mainCommand, onProgress, onSshReady) {
   return new Promise((resolve) => {
     const ssh = new SshClient();
+    let isClosed = false;
+
+    // 1. Lấy thông tin kết nối
     const { host, port, username, password } = sshConfig;
-    const { remoteZipFile, localPath } = transferConfig;
-    let isClosed = false; // THÊM BIẾN NÀY
 
-
+    // 2. Thiết lập bộ điều khiển dừng (Stop Controller)
     if (onSshReady) {
       onSshReady({
         stop: async () => {
-          isClosed = true; // Đánh dấu đã đóng
+          isClosed = true;
           try {
-            // Kiểm tra nếu ssh vẫn còn socket kết nối thì mới gọi rm
             if (ssh._sock && ssh._sock.writable) {
-              const cleanupCmd = `rm -f ${transferConfig.remoteZipFile} ${transferConfig.remoteZipFile.replace('.7z', '.bak')}`;
+              const cleanupCmd = `rm -f ${transferConfig.remoteZipFile} ${transferConfig.remoteZipFile.replace('.7z', '.*')}`;
               ssh.exec(cleanupCmd, () => { ssh.end(); });
             } else {
               ssh.end();
             }
-          } catch (e) { ssh.end(); }
+          } catch (e) {
+            ssh.end();
+          }
         }
       });
     }
 
+    ssh.on("ready", () => {
+      onProgress("Đang thực thi lệnh Backup & Nén trên Server...", 40);
+      console.log(">>> [SSH Ready] Executing Command Pipeline...");
 
-    ssh
-      .on("ready", () => {
-        // Thực thi lệnh bất kỳ (Postgres dump hoặc Mongo dump)
-        onProgress("Đang nén dữ liệu trên Server (Vui lòng chờ)...", 45);
-        ssh.exec(mainCommand, (err, stream) => {
-          if (err) {
+      ssh.exec(mainCommand, (err, stream) => {
+        if (err) {
+          ssh.end();
+          return resolve({ success: false, error: "Lỗi khởi tạo lệnh SSH: " + err.message });
+        }
+
+        let stderr = "";
+        
+        // Theo dõi luồng lỗi/cảnh báo
+        stream.stderr.on("data", (data) => {
+          const msg = data.toString();
+          stderr += msg;
+          // Lưu ý: MySQL Warning sẽ xuất hiện ở đây, ta chỉ log ra để theo dõi
+          console.log(">>> [SERVER LOG]:", msg.trim());
+        });
+
+        // Theo dõi luồng phản hồi chuẩn
+        stream.on("data", (data) => {
+          console.log(">>> [SERVER STDOUT]:", data.toString().trim());
+        });
+
+        // QUAN TRỌNG NHẤT: Đợi sự kiện 'close' - nghĩa là Bash đã chạy xong script
+        stream.on("close", (code) => {
+          console.log(">>> [SERVER] Pipeline finished with code:", code);
+          
+          if (isClosed) return;
+
+          // Nếu code khác 0 và không phải là warning vô hại
+          if (code !== 0 && !stderr.includes("Using a password on the command line interface can be insecure")) {
             ssh.end();
             return resolve({
               success: false,
-              error: "SSH Exec Error: " + err.message,
+              error: `Lỗi thực thi trên Server (Code ${code}): ${stderr || "Thất bại không rõ nguyên nhân"}`
             });
           }
 
-          let stderr = "";
-          stream.stderr.on("data", (data) => {
-            const msg = data.toString();
-            stderr += msg;
-            console.error("SERVER STDERR:", msg); // <--- THÊM DÒNG NÀY: In lỗi từ Postgres/7zip
-          });
-          
-          stream.on("data", (data) => {
-            console.log("SERVER STDOUT:", data.toString()); // <--- THÊM DÒNG NÀY: In thông báo thành công
-          });
+          // 3. Tiến hành SFTP sau khi chắc chắn nén xong
+          onProgress("Nén thành công. Đang tải file về máy local...", 70);
 
-          stream.on("close", (code) => {
-            console.log("SSH Process exited with code:", code); // <--- THÊM DÒNG NÀY: Kiểm tra code thoát
-            if (isClosed) return; // NẾU ĐÃ HỦY THÌ THOÁT, KHÔNG CHẠY SFTP NỮA
-            if (code !== 0) {
+          ssh.sftp((err, sftp) => {
+            if (err || isClosed) {
               ssh.end();
-              return resolve({
-                success: false,
-                error: `Lỗi Server (Code ${code}): ${stderr || "Nhiều khả năng sai đường dẫn file hoặc lệnh nén thất bại"}`,
-              });
+              return resolve({ success: false, error: "Lỗi khởi tạo SFTP: " + (err ? err.message : "Bị hủy") });
             }
-            onProgress("Nén thành công. Đang bắt đầu tải file về máy...", 70);
-            // Tải file nén về máy
-            ssh.sftp((err, sftp) => {
-              // if (err) {
-              //   ssh.end();
-              //   return resolve({
-              //     success: false,
-              //     error: "SFTP Error: " + err.message,
-              //   });
-              // }
 
-              if (err || isClosed) {
+            console.log(">>> [SFTP] Downloading:", transferConfig.remoteZipFile);
+
+            sftp.fastGet(transferConfig.remoteZipFile, transferConfig.localPath, {
+              // Cấu hình tải file lớn ổn định
+              chunkSize: 64 * 1024,
+              concurrency: 4
+            }, (dlErr) => {
+              if (dlErr) {
                 ssh.end();
-                return resolve({
-                  success: false,
-                  error: isClosed ? "Tiến trình bị hủy bởi người dùng" : "SFTP Error: " + err.message
-                });
-              } // <--- Bạn thiếu dấu này dẫn đến code bên dưới bị lỗi
+                return resolve({ success: false, error: "Lỗi truyền tải SFTP: " + dlErr.message });
+              }
 
-
-
-              sftp.fastGet(remoteZipFile, localPath, {}, (downloadErr) => {
-                if (downloadErr) {
-                  ssh.end();
-                  return resolve({
-                    success: false,
-                    error: "Download Error: " + downloadErr.message,
-                  });
-                }
-
-
-                // Kiểm tra dung lượng file để tránh báo thành công giả (như mình đã gợi ý trước đó)
-                const stats = fs.statSync(localPath);
-                if (stats.size < 10) {
-                  ssh.end();
-                  return resolve({ success: false, error: "Lỗi: File backup tạo ra bị rỗng (0 bytes)." });
-                }
-
-
-                onProgress("Đang dọn dẹp file tạm trên Server...", 98);
-                // Xóa file trên server sau khi kéo về thành công
-                sftp.unlink(remoteZipFile, () => {
-                  ssh.end();
-                  resolve({
-                    success: true,
-                    message: "Thành công!",
-                    path: localPath,
-                  });
-                });
+              // 4. Dọn dẹp server
+              onProgress("Đang dọn dẹp file tạm trên Server...", 95);
+              sftp.unlink(transferConfig.remoteZipFile, (unlinkErr) => {
+                if (unlinkErr) console.warn(">>> [SFTP] Không thể xóa file tạm:", unlinkErr.message);
+                ssh.end();
+                resolve({ success: true, path: transferConfig.localPath });
               });
             });
           });
         });
-      })
-      .on("error", (err) => {
-        resolve({
-          success: false,
-          error: "Kết nối SSH thất bại: " + err.message,
-        });
-      })
-      .connect({
-        host,
-        port: Number(port) || 22,
-        username,
-        password,
-        readyTimeout: 20000,
       });
+    })
+    .on("error", (err) => {
+      resolve({ success: false, error: "Không thể kết nối SSH: " + err.message });
+    })
+    .connect({
+      host: host,
+      port: Number(port) || 22,
+      username: username,
+      password: password,
+      readyTimeout: 999999,      // Đợi nén file 2.1GB
+      keepaliveInterval: 10000,  // Giữ kết nối SSH luôn sống
+      keepaliveCountMax: 100
+    });
   });
 }
 
-async function getDatabaseStats(client, dbName) {
-  // 1. Lấy phiên bản server Postgres
-  const versionRes = await client.query("SELECT version();");
-  const fullVersion = versionRes.rows[0].version;
-  // Trích xuất số phiên bản ngắn (vd: 15.3)
-  const shortVersion = fullVersion.split(" ")[1];
-
-  // 2. Lấy danh sách các bảng và số lượng hàng (row count)
-  // Truy vấn tất cả bảng trong schema 'public'
-  const tablesRes = await client.query(`
-      SELECT table_name 
-      FROM information_schema.tables 
-      WHERE table_schema = 'public'
-    `);
-
-  const tables = tablesRes.rows;
-  let rowCounts = {};
-
-  for (const table of tables) {
-    const tableName = table.table_name;
-    // Đếm số lượng bản ghi trong từng bảng
-    const countRes = await client.query(`SELECT COUNT(*) FROM "${tableName}"`);
-    rowCounts[tableName] = parseInt(countRes.rows[0].count);
-  }
-
-  return { shortVersion, rowCounts };
-}
-
+// --- HÀM CHÍNH ---
 export async function universalBackupHandler(formData, event, onSshReady) {
-  console.log("Backup Config Received:", formData);
+  const sendProgress = (msg, percent) => event && event.sender.send("backup-progress", { message: msg, progress: percent });
 
-  const sendProgress = (msg, percent) => {
-    if (event) {
-      event.sender.send("backup-progress", { message: msg, progress: percent });
-    }
-  };
-
-  sendProgress("Bắt đầu quy trình backup...", 5);
-
+  // 1. Khởi tạo và chuẩn bị biến
+  sendProgress("Đang khởi tạo kết nối...", 5);
   const timestamp = Date.now();
-  const localDir = formData.localPath;
   const dbName = formData.database;
-  const dbType = formData.dbType;
-
-  // 1. Đọc mật khẩu Zip
-  const passwordPath = path.join(process.cwd(), "configs", "passwordzip.json");
-  let backupPassword = "admin123";
-  try {
-    if (fs.existsSync(passwordPath)) {
-      const config = JSON.parse(fs.readFileSync(passwordPath, "utf8"));
-      backupPassword = config.password;
-    }
-  } catch (error) {
-    console.warn("Không đọc được file mật khẩu, dùng mặc định.");
-  }
-
-  // 2. CHUẨN BỊ BIẾN CƠ BẢN
-  const safeDbPass = JSON.stringify(formData.dbPassword);
-  const safeZipPass = JSON.stringify(backupPassword);
-
-  // TẠO TÊN FILE THỐNG NHẤT NGAY TẠI ĐÂY
+  const dbType = formData.dbType.toLowerCase();
   const baseName = `backup_${dbType}_${dbName}_${timestamp}`;
-  const remoteZipFile = `/tmp/${baseName}.7z`; 
-  const finalFileName = `${baseName}.7z`;
-  const fullLocalPath = path.join(localDir, finalFileName);
+  const localPath = path.join(formData.localPath, `${baseName}.7z`);
 
-  const transferConfig = {
-    remoteZipFile: remoteZipFile,
-    localPath: fullLocalPath,
-  };
+  // 2. Lấy mật khẩu Zip
+  let zipPass = "admin123";
+  try {
+    const pPath = path.join(process.cwd(), "configs", "passwordzip.json");
+    if (fs.existsSync(pPath)) zipPass = JSON.parse(fs.readFileSync(pPath, "utf8")).password;
+  } catch (e) { console.warn("Dùng mật khẩu Zip mặc định."); }
 
+  const safeZipPass = shellQuote(zipPass);
+  const transferConfig = { remoteZipFile: `/tmp/${baseName}.7z`, localPath };
   let dbStats = { shortVersion: "N/A", rowCounts: {} };
   let mainCommand = "";
 
-  // 3. Kiểm tra thư mục local
-  if (!fs.existsSync(localDir)) {
+  // 3. Logic xử lý lệnh theo loại Database
+  if (dbType === "postgresql" || dbType === "postgres") {
+    const remoteFile = `/tmp/${baseName}.sql`;
+    // Sử dụng nháy đơn cho mật khẩu như logic bản cũ để an toàn nhất
+    mainCommand = `export PGPASSWORD='${formData.dbPassword}' && pg_dump -h localhost -U "${formData.dbUser}" -d "${dbName}" -f "${remoteFile}" && 7za a -mx1 -p${safeZipPass} -mhe=on "${transferConfig.remoteZipFile}" "${remoteFile}" && rm -f "${remoteFile}"`;
     try {
-      fs.mkdirSync(localDir, { recursive: true });
-    } catch (err) {
-      return { success: false, error: `Không thể tạo thư mục: ${err.message}` };
-    }
+      const pg = new PgClient({ host: formData.server, user: formData.dbUser, password: formData.dbPassword, database: dbName, port: formData.dbPort || 5432 });
+      await pg.connect(); dbStats = await getPgVersion(pg); await pg.end();
+    } catch (e) { }
   }
+  else if (dbType === "mysql") {
+    const remoteFile = `/tmp/${baseName}.sql`; 
+    const scriptFile = `/tmp/run_mysql_${timestamp}.sh`;
+    
+    const safeDbPassMySQL = shellQuote(formData.dbPassword || "");
+    const safeZipPassMySQL = shellQuote(zipPass || "admin123");
 
-  // 4. SWITCH CASE THEO LOẠI DB
-  switch (dbType.toLowerCase()) {
-    //case "postgres": 
-    case "postgresql":{
-      // 1. Ép kiểu đường dẫn tuyệt đối trong /tmp để SFTP luôn tìm thấy
-      
+    // Script tối ưu: Kiểm tra file tồn tại trước khi nén và ghi log lỗi ra file riêng
+    const scriptContent = `
+#!/bin/bash
+mysqldump -h localhost -u "${formData.dbUser}" -p${safeDbPassMySQL} --column-statistics=0 --skip-lock-tables "${dbName}" > "${remoteFile}" 2> /tmp/dump_error.log
+if [ -f "${remoteFile}" ]; then
+  # Chạy nén với quyền ưu tiên, ghi log ra /tmp/zip_log.txt
+  7za a -mx1 -p${safeZipPassMySQL} -mhe=on "${transferConfig.remoteZipFile}" "${remoteFile}" > /tmp/zip_log.txt 2>&1
+  if [ $? -eq 0 ] && [ -f "${transferConfig.remoteZipFile}" ]; then
+    chmod 644 "${transferConfig.remoteZipFile}"
+    rm -f "${remoteFile}"
+  fi
+fi
+rm -f "${scriptFile}"
+    `.trim();
 
-      const baseName = `backup_pg_${dbName}_${timestamp}`;
-      const remoteFile = `/tmp/${baseName}.sql`;
-      const remoteZipFileSql = `/tmp/${baseName}.7z`;
+    mainCommand = `echo ${shellQuote(scriptContent)} > ${scriptFile} && chmod +x ${scriptFile} && bash ${scriptFile}`;
+    
+    console.log(">>> MySQL Hardened Script Mode Active");
 
-      // // 2. CẬP NHẬT QUAN TRỌNG: Gán lại cho 
-
-      
-
-      transferConfig.remoteZipFile = remoteZipFileSql;
-
-
-      // 3. Lệnh SSH: Dump -> Nén -> Xóa file SQL gốc
-      
-      mainCommand = `export PGPASSWORD=${safeDbPass} && pg_dump -h localhost -U "${formData.dbUser}" -d "${dbName}" -f "${remoteFile}" && 7za a -p${safeZipPass} -mhe=on "${remoteZipFileSql}" "${remoteFile}" && rm -f "${remoteFile}"`;
-
-      const pgClient = new Client({
+    try {
+      const connection = await mysql.createConnection({
         host: formData.server,
-        port: formData.dbPort || 5432,
         user: formData.dbUser,
         password: formData.dbPassword,
         database: dbName,
+        port: Number(formData.dbPort) || 3306,
       });
-
-      try {
-        await pgClient.connect();
-        dbStats = await getDatabaseStats(pgClient, dbName);
-        await pgClient.end();
-      } catch (err) {
-        console.error("Stats fail:", err.message);
-        // Nếu lỗi stats, dbStats vẫn giữ giá trị mặc định {rowCounts: {}} đã khai báo ở trên
-      }
-      break;
-    }
-
-    case "mysql": {
-      const remoteFile = `${remoteBase}.sql`;
-      mainCommand = `export MYSQL_PWD=${formData.dbPassword} && mysqldump -h localhost -u ${formData.dbUser} ${dbName} > ${remoteFile} && (7za a -p${safeZipPass} -mhe=on ${remoteZipFile} ${remoteFile} || 7z a -p${safeZipPass} -mhe=on ${remoteZipFile} ${remoteFile}) && rm -f ${remoteFile}`;
-      try {
-        const connection = await mysql.createConnection({
-          host: formData.server,
-          user: formData.dbUser,
-          password: formData.dbPassword,
-          database: formData.database,
-          port: Number(formData.dbPort) || 3306,
-        });
-        dbStats = await getMysqlStats(connection, formData.database);
-        await connection.end();
-      } catch (e) { console.error("MySQL Stats fail"); }
-      break;
-    }
-
-    case "mongodb": {
-      const remoteDir = `${remoteBase}_dir`;
-      const rawPass = formData.dbPassword;
-      const encodedPass = encodeURIComponent(rawPass);
-      const mongoUri = `mongodb://${formData.dbUser}:${encodedPass}@localhost:27017/${dbName}?authSource=admin`;
-      const mClient = new MongoClient(mongoUri, { connectTimeoutMS: 5000 });
-      const shellSafePass = `'${rawPass.replace(/'/g, "'\\''")}'`;
-
-      mainCommand = `mongodump --host localhost --username ${formData.dbUser} --password ${shellSafePass} --authenticationDatabase admin --db ${dbName} --out ${remoteDir} && (7za a -p${safeZipPass} -mhe=on ${remoteZipFile} ${remoteDir} || 7z a -p${safeZipPass} -mhe=on ${remoteZipFile} ${remoteDir}) && rm -rf ${remoteDir}`;
-      try {
-        sendProgress("Đang kết nối MongoDB lấy stats...", 20);
-        await mClient.connect();
-        dbStats = await getMongoStats(mClient, dbName);
-        await mClient.close();
-      } catch (err) {
-        console.error("Mongo Stats Error:", err.message);
-        if (mClient) await mClient.close();
-      }
-      break;
-    }
-
-    case "sqlserver": {
-      // Đổi sang thư mục mssql data để tránh lỗi Permission 31
-      // 1. Phải khai báo biến sqlPath ở đây
-      const sqlPath = "/opt/mssql-tools18/bin/sqlcmd";
-
-      const remoteBaseMssql = `/var/opt/mssql/data/backup_${dbName}_${timestamp}`;
-      const remoteFile = `${remoteBaseMssql}.bak`;
-      const remoteZipFileSql = `${remoteBaseMssql}.7z`;
-
-      transferConfig.remoteZipFile = remoteZipFileSql;
-
-      // 2. Bây giờ dùng ${sqlPath} mới không bị lỗi "not defined"
-      mainCommand = `touch ${remoteFile} && chmod 777 ${remoteFile} && ${sqlPath} -S localhost -U "${formData.dbUser}" -P '${formData.dbPassword}' -C -Q "BACKUP DATABASE [${dbName}] TO DISK='${remoteFile}' WITH FORMAT, INIT" && [ -s ${remoteFile} ] && 7za a -p${safeZipPass} -mhe=on ${remoteZipFileSql} ${remoteFile} ; rm -f ${remoteFile}`;
-
-      console.log("SQL Server Optimized Command:", mainCommand);
-
-      const sqlConfig = {
-        user: formData.dbUser,
-        password: formData.dbPassword,
-        server: formData.server,
-        database: dbName,
-        port: Number(formData.dbPort) || 1433,
-        options: { encrypt: true, trustServerCertificate: true },
-      };
-
-      try {
-        sendProgress("Đang kết nối SQL Server lấy stats...", 20);
-        const pool = await mssql.connect(sqlConfig);
-        dbStats = await getSqlServerStats(pool);
-        await mssql.close();
-      } catch (err) {
-        console.error("SQL Server Stats Error:", err.message);
-        try { await mssql.close(); } catch (e) { }
-      }
-      break;
+      dbStats = await getMysqlStats(connection, dbName); 
+      await connection.end();
+    } catch (e) { 
+      console.error("MySQL Stats fail:", e.message);
     }
   }
+  else if (dbType === "mongodb") {
+    const remoteDir = `/tmp/${baseName}_dir`;
+    // Thoát dấu nháy đơn trong mật khẩu MongoDB
+    const mongoPassSafe = `'${formData.dbPassword.replace(/'/g, "'\\''")}'`;
+    mainCommand = `mongodump --host localhost --username ${formData.dbUser} --password ${mongoPassSafe} --authenticationDatabase admin --db ${dbName} --out ${remoteDir} && 7za a -mx1 -p${safeZipPass} -mhe=on ${transferConfig.remoteZipFile} ${remoteDir} && rm -rf ${remoteDir}`;
+    try {
+      const mClient = new MongoClient(`mongodb://${formData.dbUser}:${encodeURIComponent(formData.dbPassword)}@localhost:27017/${dbName}?authSource=admin`);
+      await mClient.connect(); dbStats = await getMongoStats(mClient, dbName); await mClient.close();
+    } catch (e) { }
+  }
+  else if (dbType === "sqlserver" || dbType === "mssql") {
+    const sqlPath = "/opt/mssql-tools18/bin/sqlcmd";
+    const remoteBaseMssql = `/var/opt/mssql/data/${baseName}`;
+    const remoteFile = `${remoteBaseMssql}.bak`;
+    transferConfig.remoteZipFile = `${remoteBaseMssql}.7z`;
 
-  // 5. Cấu hình SSH
-  const sshConfig = {
-    host: formData.server,
-    port: formData.sshPort || 22,
-    username: formData.user,
-    password: formData.password,
-  };
+    // KHÔI PHỤC LOGIC BẢN CŨ: Dùng touch, chmod và nháy đơn
+    const dbPassSafe = `'${formData.dbPassword.replace(/'/g, "'\\''")}'`;
 
-  console.log("Thực hiện lệnh SSH:", mainCommand);
+    mainCommand = `touch ${remoteFile} && chmod 777 ${remoteFile} && ${sqlPath} -S localhost -U "${formData.dbUser}" -P ${dbPassSafe} -C -Q "BACKUP DATABASE [${dbName}] TO DISK='${remoteFile}' WITH FORMAT, INIT" && [ -s ${remoteFile} ] && 7za a -mx1 -p${safeZipPass} -mhe=on ${transferConfig.remoteZipFile} ${remoteFile} && rm -f ${remoteFile}`;
 
-  // 6. Thực hiện Backup
-  const backupResult = await executeSshBackup(
-    sshConfig,
+    console.log("SQL Server Optimized Command:", mainCommand);
+    try {
+      const pool = await mssql.connect({ user: formData.dbUser, password: formData.dbPassword, server: formData.server, database: dbName, options: { encrypt: true, trustServerCertificate: true } });
+      dbStats = await getSqlServerStats(pool); await mssql.close();
+    } catch (e) { }
+  }
+
+  // 4. Thực thi SSH
+  const result = await executeSshBackup(
+    { host: formData.server, port: formData.sshPort || 22, username: formData.user, password: formData.password },
     transferConfig,
     mainCommand,
     sendProgress,
     onSshReady
   );
 
-  if (backupResult.success) {
-    sendProgress("Hoàn tất quy trình backup!", 100);
-    return {
-      success: true,
-      filePath: fullLocalPath,
-      fileName: finalFileName,
-      dbName: dbName,
-      stats: dbStats,
-    };
-  } else {
-    return backupResult;
+  if (result.success) {
+    sendProgress("Hoàn tất!", 100);
+    return { success: true, filePath: localPath, fileName: `${baseName}.7z`, dbName, stats: dbStats };
   }
+  return result;
 }

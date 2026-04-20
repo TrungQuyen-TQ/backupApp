@@ -68,9 +68,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
   saveAutoBackup: (config) => ipcRenderer.invoke("save-auto-backup", config),
 
   // Trong preload.js
-stopBackupProcess: () => ipcRenderer.invoke("stop-backup-process"),
+  stopBackupProcess: () => ipcRenderer.invoke("stop-backup-process"),
 
 
+
+  // preload.js
+  //authorizeGmail: (email) => ipcRenderer.invoke("authorize-gmail", email),
+  // preload.js - Tìm dòng 83
+  authorizeGmail: () => ipcRenderer.invoke("authorize-gmail"),
+
+
+  getLoginConfigs: () => ipcRenderer.invoke("get-login-configs"),
 
   // preload.js thêm vào trong contextBridge
   onBackupProgress: (callback) => {
@@ -78,6 +86,8 @@ stopBackupProcess: () => ipcRenderer.invoke("stop-backup-process"),
     ipcRenderer.on("backup-progress", subscription);
     return () => ipcRenderer.removeListener("backup-progress", subscription);
   },
+
+
 
   db: {
     getMSSQL: (config) => ipcRenderer.invoke("mssql:get-databases", config),

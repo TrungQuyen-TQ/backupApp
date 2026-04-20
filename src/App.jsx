@@ -23,6 +23,7 @@ import {
   Snackbar,
   Alert,
   InputAdornment, // <--- THÊM DÒNG NÀY VÀO ĐÂY
+  Container,
 } from "@mui/material";
 import CloudIcon from "@mui/icons-material/Cloud";
 import BackupIcon from "@mui/icons-material/Backup";
@@ -37,8 +38,10 @@ import { useTheme } from "@mui/material/styles";
 import { GmailManager } from "./components/GmailManager"; // Đảm bảo đúng đường dẫn file bạn vừa tạo
 import { HistoryManager } from "./components/HistoryManager"; // Đảm bảo đúng đường dẫn file bạn vừa tạo
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
+import { ServerManager } from "./components/ServerManager";
 import LoginLayout from "./pages/Login/loginPage";
 import ConfirmStopModal from "./components/ConfirmStopModal"; // Đảm bảo đúng đường dẫn
+import Sidebar from "./components/Sidebar"; // Import Sidebar mới
 
 
 
@@ -63,11 +66,18 @@ function getStyles(name, selectedNames, theme) {
 
 function App() {
 
+  // Đặt ngay dòng đầu tiên của function
+  console.log(">>> [App] Đang khởi tạo Component...");
   // 1. Khai báo thêm useRef ở đầu Component App
   const isCancelledRef = React.useRef(false);
 
   const theme = useTheme();
   const [activeTab, setActiveTab] = useState(0);
+  // 1. Thêm State để lưu dữ liệu server được chọn từ ServerManager
+  const [selectedServer, setSelectedServer] = useState(null);
+
+  console.log(">>> [App] State selectedServer hiện tại:", selectedServer);
+
   const [formData, setFormData] = useState({
     server: "45.124.84.145",
     sshPort: "26266",
@@ -111,6 +121,10 @@ function App() {
   const [uploadSpeed, setUploadSpeed] = useState("");
   const [isUploading, setIsUploading] = useState(false);
 
+  // Thêm các state bị thiếu
+  const [selectedDriveEmail, setSelectedDriveEmail] = useState("");
+  const [showDriveSelectModal, setShowDriveSelectModal] = useState(false);
+
   const [showConfirmStopModal, setShowConfirmStopModal] = useState(false);
 
   const handleStopCurrentBackup = () => {
@@ -132,31 +146,12 @@ function App() {
     }
   };
 
-  // useEffect(() => {
-  //   let unsubUpload;
-  //   let unsubBackup;
 
-  //   // Lắng nghe tiến trình Upload
-  //   if (window.electronAPI?.onUploadProgress) {
-  //     unsubUpload = window.electronAPI.onUploadProgress((data) => {
-  //       setUploadProgress(data.progress || 0);
-  //       setUploadSpeed(data.speed || "");
-  //     });
-  //   }
+  // App.jsx
 
-  //   // SỬA: Lắng nghe thêm tiến trình Backup (Cần thêm hàm này vào preload.js)
-  //   if (window.electronAPI?.onBackupProgress) {
-  //     unsubBackup = window.electronAPI.onBackupProgress((data) => {
-  //       setUploadProgress(data.progress || 0); // Dùng chung state progress
-  //       setUploadSpeed(data.message || "Đang xử lý..."); // Hiện trạng thái backup vào ô tốc độ
-  //     });
-  //   }
 
-  //   return () => {
-  //     if (unsubUpload) unsubUpload();
-  //     if (unsubBackup) unsubBackup();
-  //   };
-  // }, []);
+
+
 
 
   useEffect(() => {
@@ -184,6 +179,116 @@ function App() {
       if (unsubBackup) unsubBackup();
     };
   }, []);
+
+
+
+  // const onScanAndConnect = async (serverConfig) => {
+  //   setIsLoading(true);
+  //   try {
+  //     // 1. Lấy toàn bộ danh sách cấu hình từ file info.json để tìm các DB cùng IP
+  //     const configRes = await window.electronAPI.getLoginConfigs();
+  //     if (!configRes.success) return showMsg("Không thể đọc danh sách cấu hình", "error");
+
+  //     // 2. Lọc ra tất cả các cấu hình có cùng địa chỉ IP với server vừa nhấn
+  //     const relatedConfigs = configRes.serverConfigs.filter(
+  //       (cfg) => cfg.server === serverConfig.server
+  //     );
+
+  //     showMsg(`🚀 Đang quét tổng lực ${relatedConfigs.length} loại DB trên server ${serverConfig.server}...`, "info");
+
+  //     let allNewLogs = [];
+
+  //     // 3. Vòng lặp quét từng loại DB (MySQL, MSSQL, MongoDB, Postgres...)
+  //     for (const config of relatedConfigs) {
+  //       const type = config.dbType?.toLowerCase();
+  //       let dbRes;
+
+  //       // Gọi đúng hàm quét theo loại DB tương ứng
+  //       if (type === "mysql") dbRes = await window.electronAPI.db.getMySQL(config);
+  //       else if (type === "mongodb") dbRes = await window.electronAPI.db.getMongo(config);
+  //       else if (type === "postgresql") dbRes = await window.electronAPI.db.getPostgres(config);
+  //       else dbRes = await window.electronAPI.db.getMSSQL(config);
+
+  //       if (dbRes && dbRes.success && dbRes.databases) {
+  //         // Tạo log cho từng Database tìm thấy trong loại DB này
+  //         const entries = dbRes.databases.map((dbName) => ({
+  //           ...config, // Giữ nguyên user/pass của từng loại DB
+  //           id: Date.now() + Math.random(),
+  //           database: dbName,
+  //           time: new Date().toLocaleTimeString(),
+  //           success: true,
+  //         }));
+  //         allNewLogs = [...allNewLogs, ...entries];
+  //       }
+  //     }
+
+  //     // 4. Cập nhật kết quả xuống bảng lịch sử phía dưới
+  //     if (allNewLogs.length > 0) {
+  //       setConnectionLogs((prev) => [...allNewLogs, ...prev]);
+  //       showMsg(`✅ Thành công! Đã tìm thấy tổng cộng ${allNewLogs.length} Database.`, "success");
+  //     } else {
+  //       showMsg("Không tìm thấy Database nào khả dụng trên server này.", "warning");
+  //     }
+
+  //   } catch (err) {
+  //     console.error("Lỗi onScanAndConnect:", err);
+  //     showMsg("Lỗi hệ thống: " + err.message, "error");
+  //   } finally {
+  //     setIsLoading(false);
+  //   }
+  // };
+
+
+  const onScanAndConnect = async (serverConfig) => {
+    setIsLoading(true);
+    try {
+      // 1. Lấy danh sách cấu hình từ info.json
+      const configRes = await window.electronAPI.getLoginConfigs();
+      if (!configRes.success) return showMsg("Không thể đọc danh sách cấu hình", "error");
+
+      // 2. Lọc ra các loại DB (MySQL, MSSQL...) của IP này
+      const relatedConfigs = configRes.serverConfigs.filter(
+        (cfg) => cfg.server === serverConfig.server
+      );
+
+      showMsg(`🔍 Đang kiểm tra kết nối tới các loại DB trên server ${serverConfig.server}...`, "info");
+
+      let validConnections = [];
+
+      // 3. Vòng lặp kiểm tra kết nối (Chỉ check xem Server đó có sống không)
+      for (const config of relatedConfigs) {
+        // Gọi hàm test-connection chung của hệ thống thay vì quét từng DB
+        const result = await window.electronAPI.testConnection(config);
+
+        if (result.success) {
+          // Nếu kết nối được, tạo 1 bản ghi đại diện cho loại DB đó
+          validConnections.push({
+            ...config,
+            id: Date.now() + Math.random(),
+            database: "Dòng kết nối chính", // Không liệt kê database con nữa
+            time: new Date().toLocaleTimeString(),
+            success: true,
+          });
+        } else {
+          console.warn(`Kết nối lỗi cho ${config.dbType}:`, result.error);
+        }
+      }
+
+      // 4. Đẩy kết quả ra bảng lịch sử
+      if (validConnections.length > 0) {
+        setConnectionLogs((prev) => [...validConnections, ...prev]);
+        showMsg(`✅ Đã thiết lập xong ${validConnections.length} cổng kết nối!`, "success");
+      } else {
+        showMsg("Không có cổng kết nối nào hoạt động.", "error");
+      }
+
+    } catch (err) {
+      showMsg("Lỗi hệ thống: " + err.message, "error");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
 
 
   // Hàm xử lý khi nhấn nút "Đẩy lên Google Drive" gốc
@@ -218,6 +323,14 @@ function App() {
     } else {
       showMsg("Tài khoản hoặc mật khẩu không chính xác", "error");
     }
+  };
+
+  /**
+   * Hàm xử lý khi đăng nhập thành công từ ConnectionForm
+   */
+  const handleLoginSuccess = () => {
+    // Có thể thêm logic bổ sung ở đây nếu cần
+    console.log(">>> [App] Đăng nhập cơ sở dữ liệu thành công!");
   };
 
   /**
@@ -257,43 +370,26 @@ function App() {
   const handleBackupSpecificDb = async (log) => {
     setBackingUpId(log.id); // Giữ ID này để UI sáng đèn
     setUploadProgress(0);
+
+    // 1. CẬP NHẬT TÊN DATABASE VÀO STATE LOG ĐỂ HIỂN THỊ
+    setConnectionLogs((prev) =>
+      prev.map((item) =>
+        item.id === log.id ? { ...item, database: log.database } : item
+      )
+    );
+
+    // 2. Thiết lập thông báo chuẩn bị
+    setUploadSpeed(`Đang chuẩn bị: ${log.database}...`);
     isCancelledRef.current = false;
 
     try {
-      // 1. Gọi API xuống Electron để thực hiện backup
+      // 3. Gọi API xuống Electron để thực hiện backup
       const result = await window.electronAPI.createSqlBackup(log);
 
-      // 2. Nếu người dùng đã nhấn nút Hủy trong lúc chờ, thoát ngay
+      // 4. Nếu người dùng đã nhấn nút Hủy trong lúc chờ, thoát ngay
       if (isCancelledRef.current) return { success: false, cancelled: true };
 
-      // 3. KIỂM TRA CHẶT CHẼ: Phải thành công VÀ phải có dữ liệu thống kê (stats)
-      // if (result && result.success && result.stats) {
-      //   setBackupStats(result);
-      //   setShowBackupModal(true); // Hiện Modal bảng dữ liệu
-
-      //   // Lưu lịch sử backup vào Database
-      //   // await window.electronAPI.saveBackupHistory({
-      //   //   dbName: result.dbName || log.database,
-      //   //   fileName: result.fileName,
-      //   //   stats: result.stats,
-      //   //   localPath: log.localPath, 
-      //   // });
-
-
-      //   await window.electronAPI.saveBackupHistory({
-      //     dbName: result.dbName || log.database,
-      //     fileName: result.fileName,
-      //     stats: result.stats || { rowCounts: {}, version: "N/A" },
-      //     localPath: log.localPath,
-      //   });
-
-      //   // Hiện thông báo xanh khi chắc chắn có dữ liệu thực
-      //   showMsg(`✅ Backup thành công: ${result.dbName || log.database}`, "success");
-
-      //   // Trả kết quả về cho hàm cha để đếm successCount
-      //   return result;
-      // }
-
+      // 5. KIỂM TRA CHẶT CHẼ: Phải thành công VÀ phải có dữ liệu thống kê (stats)
       if (result && result.success) {
         // Lưu dữ liệu vào State để hiển thị Modal
         setBackupStats(result);
@@ -358,7 +454,7 @@ function App() {
 
   // 6. Xử lý Upload nhiều file sau khi chọn từ Popup
   // App.jsx
-  const handleUploadFiles = async (filesToUpload, targetEmails) => {
+  const handleUploadFiles = async (filesToUpload, targetEmails, folderName) => {
     setDriveProgress(0); // Đảm bảo reset từ đầu
     setUploadSpeed("Đang khởi tạo...");
     setIsLoading(true);
@@ -372,6 +468,7 @@ function App() {
         const driveResult = await window.electronAPI.uploadToDrive({
           files: filesToUpload,
           targetEmail: email,
+          folderName: folderName || "SQL_Backups",
         });
 
         if (driveResult.success) {
@@ -379,6 +476,7 @@ function App() {
           await window.electronAPI.saveUploadHistory({
             fileName: fileNames,
             targetEmail: email,
+            folderName: folderName || "SQL_Backups", // Lưu tên folder động
           });
 
           // Sau khi xong 1 email, có thể set lên 100% tạm thời
@@ -469,38 +567,6 @@ function App() {
     }
   };
 
-  //  const handleBackupMultipleDbs = async () => {
-  //   if (selectedDbs.length === 0) return alert("Vui lòng chọn ít nhất 1 database!");
-  //   setShowInputDbModal(false);
-
-  //   for (const dbName of selectedDbs) {
-  //     const currentConfig = {
-  //       ...selectedLogForBackup,
-  //       database: dbName,
-  //       id: selectedLogForBackup.id 
-  //     };
-
-  //     setUploadSpeed(`Đang chuẩn bị: ${dbName}...`);
-  //     await handleBackupSpecificDb(currentConfig);
-
-  //     // NẾU ĐÃ NHẤN HỦY: Thoát vòng lặp ngay lập tức, không chạy DB tiếp theo
-  //     if (isCancelledRef.current) break; 
-
-  //     setUploadProgress(0);
-  //   }
-
-  //   // CHỈ HIỆN THÔNG BÁO NẾU KHÔNG BỊ HỦY
-  //   if (!isCancelledRef.current) {
-  //     showMsg(`Đã hoàn thành toàn bộ ${selectedDbs.length} bản backup!`, "success");
-  //   } else {
-  //     showMsg("Đã dừng tiến trình backup theo yêu cầu.", "warning");
-  //   }
-
-  //   setBackingUpId(null); 
-  //   setSelectedDbs([]);
-  // };
-
-
   const handleBackupMultipleDbs = async () => {
     if (selectedDbs.length === 0) return alert("Vui lòng chọn ít nhất 1 database!");
     setShowInputDbModal(false);
@@ -516,21 +582,17 @@ function App() {
         id: selectedLogForBackup.id
       };
 
+      // --- BƯỚC QUAN TRỌNG: Cập nhật tên DB vào danh sách log để hiển thị lên UI ---
+      setConnectionLogs((prev) =>
+        prev.map((item) =>
+          item.id === selectedLogForBackup.id ? { ...item, database: dbName } : item
+        )
+      );
+
       setUploadSpeed(`Đang chuẩn bị: ${dbName}...`);
 
       // Đợi kết quả từ hàm backup con
-      // Lưu ý: handleBackupSpecificDb cần return về result để ta kiểm tra
       const result = await handleBackupSpecificDb(currentConfig);
-
-      // Nếu thành công (không bị hủy và có kết quả tốt) thì tăng biến đếm
-      // if (!isCancelledRef.current && result && result.success && result.stats) {
-      //   successCount++;
-      // }
-
-      // SỬA: Chỉ cần không hủy và success: true là tính thành công
-      // if (!isCancelledRef.current && result && result.success) {
-      //   successCount++;
-      // }
 
       if (!isCancelledRef.current && result && result.success) {
         successCount++;
@@ -540,7 +602,7 @@ function App() {
       setUploadProgress(0);
     }
 
-    // --- SỬA LOGIC HIỆN THÔNG BÁO CUỐI CÙNG ---
+    // --- LOGIC HIỆN THÔNG BÁO CUỐI CÙNG ---
     if (isCancelledRef.current) {
       showMsg("Đã dừng tiến trình backup theo yêu cầu.", "warning");
     } else if (successCount === totalSelected) {
@@ -575,39 +637,20 @@ function App() {
 
   // Thêm hàm này vào App.jsx
   // App.jsx
-
-  // const handleStopCurrentBackup = async (logId) => {
-  //   if (window.confirm("Bạn có chắc chắn muốn dừng quá trình backup này không?")) {
-  //     isCancelledRef.current = true; // Chặn không cho Modal hiện lên sau khi await xong
-
-  //     // Gọi xuống Backend để đóng kết nối SSH thực tế
-  //     const result = await window.electronAPI.stopBackupProcess();
-
-  //     if (result.success) {
-  //       setBackingUpId(null);
-  //       setUploadProgress(0); // Đưa thanh tiến trình về 0
-  //       showMsg("Đã dừng tiến trình và ngắt kết nối!", "warning");
-  //     }
-  //   }
-  // };
-
-
-
   return (
-    <Box sx={{ minHeight: "100vh" }}>
+    <Box sx={{ minHeight: "100vh", bgcolor: "#eaeff1" }}>
       {/* Kiểm tra đăng nhập ở đây */}
+      {console.log(">>> [App] Đang vẽ giao diện (Render)...")}
       {!isLoggedIn ? (
         <LoginLayout onLogin={handleLogin} />
       ) : (
-        <Box
-          sx={{
-            bgcolor: "#eaeff1",
-            minHeight: "100vh",
-            p: 3,
-            display: "flex",
-            gap: 2,
-          }}
-        >
+        <Box sx={{ display: 'flex', minHeight: '100vh', width: '100%', bgcolor: '#eaeff1' }}>
+          {/* 1. SIDEBAR CỐ ĐỊNH BÊN TRÁI */}
+          <Sidebar
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            onLogout={() => setIsLoggedIn(false)}
+          />
           {/* MODAL 1: MULTIPLE SELECT */}
           <Modal
             open={showInputDbModal}
@@ -962,338 +1005,363 @@ function App() {
             </Box>
           </Modal>
 
-          <Box
-            sx={{
-              bgcolor: "#eaeff1",
-              minHeight: "100vh",
-              p: 3,
-              display: "flex",
-              flexDirection: "column",
-              gap: 2,
-              // Đảm bảo Box ngoài cùng chiếm toàn bộ chiều ngang
-              width: "100vw",
-              boxSizing: "border-box",
-            }}
-          >
-            {/* --- KHỐI TRÊN: CẤU HÌNH VÀ CHỨC NĂNG --- */}
-            <Paper
-              elevation={2}
-              sx={{
-                width: "100%",
-                borderRadius: 2,
-                overflow: "hidden", // Giữ để bo góc mượt
-                display: "flex",
-                flexDirection: "column",
-                mb: 1, // Khoảng cách nhỏ với khối dưới
-              }}
-            >
-              <TabsHeader activeTab={activeTab} setActiveTab={setActiveTab} />
+          {/* 2. NỘI DUNG CHÍNH BÊN PHẢI */}
+          <Box component="main" sx={{ flexGrow: 1, p: 3, overflowY: 'auto' }}>
 
-              {/* Box nội dung không dùng scroll, cho phép dãn tự nhiên */}
-              <Box sx={{ p: 0 }}>
-                {activeTab === 0 && (
-                  <ConnectionForm
-                    formData={formData}
-                    setFormData={setFormData}
-                    onConnectSuccess={handleTestConnection}
-                  />
-                )}
+            {console.log(">>> [App] Tab đang hiển thị là:", activeTab)}
+            <Container maxWidth="lg" sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
 
-                {activeTab === 1 && (
-                  <Box sx={{ p: 2 }}>
-                    <FormAuto
-                      connectionLogs={connectionLogs}
-                      setActiveTab={setActiveTab}
-                      onFetchDatabases={handleOpenBackupConfig}
-                      dbList={dbList}
-                      isFetching={isFetchingDbs}
-                    />
-                  </Box>
-                )}
 
-                {activeTab === 2 && (
-                  <Box>
-                    <UploadPopup
-                      onUpload={handleUploadFiles}
-                      showMsg={showMsg}
-                      formdata={formData}
-                    />
-                    <CloudBackup
-                      handleOpenUploadPopup={handleOpenUploadPopup}
-                      isUploading={isUploading}
-                      uploadProgress={driveProgress}
-                      uploadSpeed={uploadSpeed}
-                      isLoading={isLoading}
-                    //cloudSubTab={0} // Mặc định là Google Drive
-                    />
-                  </Box>
-                )}
+              {/* --- KHỐI TRÊN: CẤU HÌNH VÀ CHỨC NĂNG --- */}
+              <Paper elevation={2} sx={{ borderRadius: 2, overflow: "hidden", mb: 1 }}>
 
-                {/* Trong App.jsx, đoạn Khối Trên */}
-                {activeTab === 3 && <GmailManager showMsg={showMsg} />}
+                {/* Box nội dung không dùng scroll, cho phép dãn tự nhiên */}
+                {/* Thay thế đoạn này trong App.jsx từ dòng 758 đến 813 */}
+                <Box sx={{ p: 0 }}>
+                  {/* Index 0: Chủ động */}
+                  {activeTab === 0 && (
+                    <>
+                      {console.log(">>> [App] Đang nạp ConnectionForm...")}
+                      <ConnectionForm
+                        formData={formData}
+                        setFormData={setFormData}
+                        onConnectSuccess={handleTestConnection}
+                        showMsg={showMsg}
+                        onLoginSuccess={handleLoginSuccess}
+                        initialData={selectedServer}
+                      />
+                    </>
 
-                {/* Trong Khối Trên của App.jsx */}
-                {activeTab === 4 && <HistoryManager />}
-              </Box>
-            </Paper>
+                  )}
 
-            {/* --- KHỐI DƯỚI: LỊCH SỬ KẾT NỐI (Chuyển từ cột phải sang) --- */}
-            {/* --- KHỐI DƯỚI: LỊCH SỬ KẾT NỐI --- */}
-            <Paper
-              elevation={2}
-              sx={{
-                // flex: 1, // SỬA: Xóa flex: 1 để khối này không chiếm toàn bộ màn hình, giúp cố định chiều cao
-                borderRadius: 2,
-                p: 2,
-                display: "flex",
-                flexDirection: "column",
-                overflow: "hidden",
-                minHeight: "200px", // <--- THÊM DÒNG NÀY để tạo khung cố định lúc mới vào
-                bgcolor: "#fff",
-              }}
-            >
-              <Typography
-                variant="h6"
-                sx={{ mb: 1, fontWeight: "bold", px: 1 }}
-              >
-                Lịch sử kết nối & Trạng thái Backup
-              </Typography>
-              <Divider />
-
-              <List
-                sx={{
-                  px: 1, mt: 1, maxHeight: "580px", overflowY: "auto",
-                  display: "grid", gridTemplateColumns: "1fr", gap: 2.5,
-                  "&::-webkit-scrollbar": { width: "6px" },
-                  "&::-webkit-scrollbar-thumb": { backgroundColor: "#d1d9e0", borderRadius: "10px" },
-                  "&::-webkit-scrollbar-track": { backgroundColor: "transparent" }
-                }}
-              >
-                {connectionLogs.map((log) => (
-                  <ListItem
-                    key={log.id}
-                    sx={{
-                      borderRadius: "16px", border: "1px solid #f0f2f5", p: 0,
-                      display: "flex", flexDirection: "column", alignItems: "stretch",
-                      bgcolor: "#fff", width: "100%", boxSizing: "border-box",
-                      transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
-                      boxShadow: "0 2px 12px rgba(0,0,0,0.03)",
-                      overflow: "hidden",
-                      opacity: log.success ? 1 : 0.8,
-                      "&:hover": {
-                        borderColor: log.success ? "#1976d2" : "#d32f2f",
-                        transform: "translateY(-4px)",
-                        boxShadow: "0 12px 24px rgba(0,0,0,0.08)",
-                        "& .delete-btn": { opacity: 1 }
-                      }
-                    }}
-                  >
-                    {/* PHẦN 1: HEADER */}
-                    <Box sx={{ p: 2.5, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <Box sx={{ display: "flex", alignItems: "center", gap: 2.5 }}>
-                        <Box
-                          sx={{
-                            width: 48, height: 48, borderRadius: "12px",
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                            bgcolor: log.success ? "#e8f5e9" : "#fff1f0",
-                            color: log.success ? "#2e7d32" : "#d32f2f",
-                          }}
-                        >
-                          {log.success ? <CheckCircleIcon /> : <ErrorIcon />}
-                        </Box>
-
-                        <Box>
-                          <Typography variant="subtitle1" sx={{ fontWeight: 800, color: log.success ? "#1a2027" : "#d32f2f" }}>
-                            {log.server} {!log.success && "(Kết nối lỗi)"}
-                          </Typography>
-                          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 0.5 }}>
-                            <Chip
-                              label={log.dbType || "MSSQL"}
-                              size="small"
-                              sx={{
-                                height: 20, fontSize: "0.65rem", fontWeight: 900,
-                                bgcolor: log.success ? (log.dbType === "mongodb" ? "#e6f4ea" : "#e3f2fd") : "#f5f5f5",
-                                color: log.success ? (log.dbType === "mongodb" ? "#1e8e3e" : "#1976d2") : "#9e9e9e",
-                              }}
-                            />
-                            <Typography variant="caption" sx={{ color: "#94a3b8" }}>{log.time}</Typography>
-                          </Box>
-                        </Box>
-                      </Box>
-
-                      <IconButton
-                        className="delete-btn"
-                        size="small"
-                        onClick={() => handleDeleteLog(log.id)}
-                        sx={{ color: "#d32f2f", opacity: 0, transition: "0.3s", bgcolor: "#fff1f0" }}
-                      >
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
+                  {/* Index 1: Tự động */}
+                  {activeTab === 1 && (
+                    <Box sx={{ p: 2 }}>
+                      <FormAuto
+                        showMsg={showMsg}
+                        connectionLogs={connectionLogs}
+                        setActiveTab={setActiveTab} // THÊM DÒNG NÀY ĐỂ TRÁNH LỖI
+                        onFetchDatabases={handleOpenBackupConfig}
+                        dbList={dbList}
+                        isFetching={isFetchingDbs}
+                      />
                     </Box>
+                  )}
 
-                    {/* PHẦN 2: THANH ĐIỀU KHIỂN */}
-                    <Box
+                  {/* Index 2: Quản lý Server */}
+                  {/* {activeTab === 2 && (
+                    <ServerManager
+                      showMsg={showMsg}
+                      onConnect={(serverData) => {
+                        setSelectedServer(serverData);
+                        setActiveTab(0);
+                      }}
+                    />
+                  )} */}
+                  {/* App.jsx */}
+                  {activeTab === 2 && (
+                    <ServerManager
+                      showMsg={showMsg}
+                      // PHẢI TRUYỀN HÀM MỚI VÀO ĐÂY
+                      onScanAndConnect={onScanAndConnect}
+                    />
+                  )}
+
+
+
+                  {/* Index 3: Đẩy lên Cloud */}
+                  {activeTab === 3 && (
+                    <Box>
+                      <UploadPopup onUpload={handleUploadFiles} showMsg={showMsg} formdata={formData} />
+                      <CloudBackup
+                        handleOpenUploadPopup={handleOpenUploadPopup}
+                        isUploading={isUploading}
+                        uploadProgress={driveProgress}
+                        uploadSpeed={uploadSpeed}
+                        isLoading={isLoading}
+                        showMsg={showMsg}
+                      />
+                    </Box>
+                  )}
+
+                  {/* Index 4: Quản lý Gmail */}
+                  {activeTab === 4 && <GmailManager showMsg={showMsg} />}
+
+                  {/* Index 5: History */}
+                  {activeTab === 5 && <HistoryManager />}
+                </Box>
+              </Paper>
+
+              {/* --- KHỐI DƯỚI: LỊCH SỬ KẾT NỐI (Chuyển từ cột phải sang) --- */}
+
+              <Paper elevation={2} sx={{ borderRadius: 2, p: 2, minHeight: "200px", bgcolor: "#fff" }}>
+                <Typography variant="h6" sx={{ mb: 1, fontWeight: "bold", px: 1 }}>
+                  Lịch sử kết nối & Trạng thái Backup
+                </Typography>
+                <Divider />
+
+                <List
+                  sx={{
+                    px: 1, mt: 1, maxHeight: "580px", overflowY: "auto",
+                    display: "grid", gridTemplateColumns: "1fr", gap: 2.5,
+                    "&::-webkit-scrollbar": { width: "6px" },
+                    "&::-webkit-scrollbar-thumb": { backgroundColor: "#d1d9e0", borderRadius: "10px" },
+                    "&::-webkit-scrollbar-track": { backgroundColor: "transparent" }
+                  }}
+                >
+                  {connectionLogs.map((log) => (
+                    <ListItem
+                      key={log.id}
                       sx={{
-                        display: "flex", justifyContent: "flex-end", gap: 1.5, p: 1.5,
-                        bgcolor: "#fcfcfd", borderTop: "1px solid #f0f2f5"
+                        borderRadius: "16px", border: "1px solid #f0f2f5", p: 0,
+                        display: "flex", flexDirection: "column", alignItems: "stretch",
+                        bgcolor: "#fff", width: "100%", boxSizing: "border-box",
+                        transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
+                        boxShadow: "0 2px 12px rgba(0,0,0,0.03)",
+                        overflow: "hidden",
+                        opacity: log.success ? 1 : 0.8,
+                        "&:hover": {
+                          borderColor: log.success ? "#1976d2" : "#d32f2f",
+                          transform: "translateY(-4px)",
+                          boxShadow: "0 12px 24px rgba(0,0,0,0.08)",
+                          "& .delete-btn": { opacity: 1 }
+                        }
                       }}
                     >
-                      {/* NÚT HỦY: Chỉ xuất hiện khi đang trong quá trình Backup */}
-                      {backingUpId === log.id && (
-                        <Button
-                          variant="outlined"
-                          size="small"
-                          color="error"
-                          onClick={() => handleStopCurrentBackup(log.id)}
-                          sx={{
-                            borderRadius: "8px",
-                            px: 2,
-                            fontWeight: 700,
-                            textTransform: "none",
-                            borderWidth: "1.5px",
-                            "&:hover": { borderWidth: "1.5px" }
-                          }}
-                        >
-                          Hủy Backup
-                        </Button>
-                      )}
+                      {/* PHẦN 1: HEADER */}
+                      <Box sx={{ p: 2.5, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <Box sx={{ display: "flex", alignItems: "center", gap: 2.5 }}>
+                          <Box
+                            sx={{
+                              width: 48, height: 48, borderRadius: "12px",
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              bgcolor: log.success ? "#e8f5e9" : "#fff1f0",
+                              color: log.success ? "#2e7d32" : "#d32f2f",
+                            }}
+                          >
+                            {log.success ? <CheckCircleIcon /> : <ErrorIcon />}
+                          </Box>
 
-                      <Button
-                        variant="contained"
-                        size="small"
-                        disabled={!log.success || (backingUpId !== null && backingUpId !== log.id)}
-                        onClick={() => handleOpenBackupConfig(log, true)}
-                        sx={{
-                          borderRadius: "12px",
-                          px: 3,
-                          textTransform: "none",
-                          fontWeight: 800,
-                          fontSize: "0.85rem",
-                          minWidth: "160px",
-                          boxShadow: "0 4px 15px rgba(0,0,0,0.1)",
-                          position: "relative",
-                          overflow: "hidden",
-                          transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
-
-                          // --- LOGIC MÀU SẮC & GRADIENT ---
-                          backgroundSize: "200% 200%",
-                          backgroundImage: backingUpId === log.id
-                            ? "linear-gradient(45deg, #f44336, #ba000d, #f44336)" // Đỏ rực khi chạy
-                            : (log.success
-                              ? "linear-gradient(135deg, #1976d2, #00d4ff, #1565c0)" // Xanh neon hiện đại
-                              : "linear-gradient(135deg, #bdbdbd, #9e9e9e)"),
-
-                          // --- ANIMATION KHI ĐANG BACKUP ---
-                          animation: backingUpId === log.id ? "gradientMove 2s ease infinite" : "none",
-                          "@keyframes gradientMove": {
-                            "0%": { backgroundPosition: "0% 50%" },
-                            "50%": { backgroundPosition: "100% 50%" },
-                            "100%": { backgroundPosition: "0% 50%" },
-                          },
-
-                          // --- HIỆU ỨNG HOVER ---
-                          "&:hover": {
-                            transform: "translateY(-2px)",
-                            boxShadow: log.success ? "0 8px 25px rgba(25, 118, 210, 0.4)" : "none",
-                            filter: "brightness(1.15)",
-                            "&::after": {
-                              left: "100%",
-                            },
-                          },
-
-                          // --- HIỆU ỨNG ÁNH SÁNG LƯỚT QUA (SHINE) ---
-                          "&::after": {
-                            content: '""',
-                            position: "absolute",
-                            top: 0,
-                            left: "-100%",
-                            width: "100%",
-                            height: "100%",
-                            background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)",
-                            transition: "all 0.6s",
-                          },
-
-                          // Trạng thái Disabled
-                          "&.Mui-disabled": {
-                            background: "#e0e0e0",
-                            color: "#9e9e9e",
-                          }
-                        }}
-                      >
-
-
-
-                        <Box
-                          sx={{
-                            zIndex: 2,
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 1.5,
-                            padding: "4px 8px",
-                            borderRadius: "8px",
-                            // Tạo hiệu ứng lấp lánh nhẹ khi đang backup
-                            animation: backingUpId === log.id ? "pulse 2s infinite" : "none",
-                            "@keyframes pulse": {
-                              "0%": { opacity: 1 },
-                              "50%": { opacity: 0.8 },
-                              "100%": { opacity: 1 },
-                            },
-                          }}
-                        >
-
-
-                          {backingUpId === log.id ? (
-                            <>
-                              <CircularProgress
-                                size={18}
-                                thickness={6}
+                          <Box>
+                            <Typography variant="subtitle1" sx={{ fontWeight: 800, color: log.success ? "#1a2027" : "#d32f2f" }}>
+                              {log.server} {!log.success && "(Kết nối lỗi)"}
+                            </Typography>
+                            <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 0.5 }}>
+                              <Chip
+                                label={log.dbType || "MSSQL"}
+                                size="small"
                                 sx={{
-                                  color: "#fff",
-                                  // Animation xoay mượt mà hơn
-                                  animationDuration: "550ms",
-                                  filter: "drop-shadow(0 0 5px rgba(255,255,255,0.5))",
+                                  height: 20, fontSize: "0.65rem", fontWeight: 900,
+                                  bgcolor: log.success ? (log.dbType === "mongodb" ? "#e6f4ea" : "#e3f2fd") : "#f5f5f5",
+                                  color: log.success ? (log.dbType === "mongodb" ? "#1e8e3e" : "#1976d2") : "#9e9e9e",
                                 }}
                               />
+                              <Typography variant="caption" sx={{ color: "#94a3b8" }}>{log.time}</Typography>
+                            </Box>
+
+
+                            {/* --- ĐÂY LÀ DÒNG CHỮ ĐANG BACKUP LINH CẦN THÊM --- */}
+                            {backingUpId === log.id && (
                               <Typography
                                 variant="caption"
                                 sx={{
+                                  display: "block",
+                                  mt: 0.8,
+                                  color: "#1976d2",
                                   fontWeight: "900",
-                                  fontSize: "0.85rem",
-                                  letterSpacing: "0.5px",
-                                  textShadow: "0px 1px 3px rgba(0,0,0,0.3)",
-                                  fontFamily: "'Roboto Mono', monospace", // Nhìn giống số điện tử hơn
+                                  fontStyle: "italic",
+                                  animation: "pulseText 2s infinite"
                                 }}
                               >
-                                {uploadProgress}%
+                                {/* Kiểm tra nếu uploadSpeed chứa chữ "Đang chuẩn bị" thì mới bóc tách, 
+        nếu không thì hiển thị tên DB trực tiếp từ config của log */}
+                                ● Đang backup db: {
+                                  uploadSpeed.includes("Đang chuẩn bị")
+                                    ? uploadSpeed.split("...")[0].replace("Đang chuẩn bị: ", "")
+                                    : (log.database || "Đang xử lý")
+                                } ...
                               </Typography>
-                            </>
-                          ) : (
-                            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                              <BackupIcon sx={{ fontSize: 18 }} />
-                              <Typography sx={{ fontWeight: "800", letterSpacing: "1px" }}>
-                                BACKUP NOW
-                              </Typography>
-                            </Box>
-                          )}
+                            )}
+
+
+
+                          </Box>
                         </Box>
 
+                        <IconButton
+                          className="delete-btn"
+                          size="small"
+                          onClick={() => handleDeleteLog(log.id)}
+                          sx={{ color: "#d32f2f", opacity: 0, transition: "0.3s", bgcolor: "#fff1f0" }}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+
+                      {/* PHẦN 2: THANH ĐIỀU KHIỂN */}
+                      <Box
+                        sx={{
+                          display: "flex", justifyContent: "flex-end", gap: 1.5, p: 1.5,
+                          bgcolor: "#fcfcfd", borderTop: "1px solid #f0f2f5"
+                        }}
+                      >
+                        {/* NÚT HỦY: Chỉ xuất hiện khi đang trong quá trình Backup */}
                         {backingUpId === log.id && (
-                          <LinearProgress
-                            variant="determinate"
-                            value={uploadProgress}
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            color="error"
+                            onClick={() => handleStopCurrentBackup(log.id)}
                             sx={{
-                              position: "absolute", bottom: 0, left: 0, right: 0, height: "100%",
-                              bgcolor: "transparent", opacity: 0.2,
-                              "& .MuiLinearProgress-bar": { backgroundColor: "#fff" }
+                              borderRadius: "8px",
+                              px: 2,
+                              fontWeight: 700,
+                              textTransform: "none",
+                              borderWidth: "1.5px",
+                              "&:hover": { borderWidth: "1.5px" }
                             }}
-                          />
+                          >
+                            Hủy Backup
+                          </Button>
                         )}
-                      </Button>
-                    </Box>
-                  </ListItem>
-                ))}
-              </List>
-            </Paper>
+
+                        <Button
+                          variant="contained"
+                          size="small"
+                          disabled={!log.success || (backingUpId !== null && backingUpId !== log.id)}
+                          onClick={() => handleOpenBackupConfig(log, true)}
+                          sx={{
+                            borderRadius: "12px",
+                            px: 3,
+                            textTransform: "none",
+                            fontWeight: 800,
+                            fontSize: "0.85rem",
+                            minWidth: "160px",
+                            boxShadow: "0 4px 15px rgba(0,0,0,0.1)",
+                            position: "relative",
+                            overflow: "hidden",
+                            transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
+
+                            // --- LOGIC MÀU SẮC & GRADIENT ---
+                            backgroundSize: "200% 200%",
+                            backgroundImage: backingUpId === log.id
+                              ? "linear-gradient(45deg, #f44336, #ba000d, #f44336)" // Đỏ rực khi chạy
+                              : (log.success
+                                ? "linear-gradient(135deg, #1976d2, #00d4ff, #1565c0)" // Xanh neon hiện đại
+                                : "linear-gradient(135deg, #bdbdbd, #9e9e9e)"),
+
+                            // --- ANIMATION KHI ĐANG BACKUP ---
+                            animation: backingUpId === log.id ? "gradientMove 2s ease infinite" : "none",
+                            "@keyframes gradientMove": {
+                              "0%": { backgroundPosition: "0% 50%" },
+                              "50%": { backgroundPosition: "100% 50%" },
+                              "100%": { backgroundPosition: "0% 50%" },
+                            },
+
+                            // --- HIỆU ỨNG HOVER ---
+                            "&:hover": {
+                              transform: "translateY(-2px)",
+                              boxShadow: log.success ? "0 8px 25px rgba(25, 118, 210, 0.4)" : "none",
+                              filter: "brightness(1.15)",
+                              "&::after": {
+                                left: "100%",
+                              },
+                            },
+
+                            // --- HIỆU ỨNG ÁNH SÁNG LƯỚT QUA (SHINE) ---
+                            "&::after": {
+                              content: '""',
+                              position: "absolute",
+                              top: 0,
+                              left: "-100%",
+                              width: "100%",
+                              height: "100%",
+                              background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)",
+                              transition: "all 0.6s",
+                            },
+
+                            // Trạng thái Disabled
+                            "&.Mui-disabled": {
+                              background: "#e0e0e0",
+                              color: "#9e9e9e",
+                            }
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              zIndex: 2,
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 1.5,
+                              padding: "4px 8px",
+                              borderRadius: "8px",
+                              // Tạo hiệu ứng lấp lánh nhẹ khi đang backup
+                              animation: backingUpId === log.id ? "pulse 2s infinite" : "none",
+                              "@keyframes pulse": {
+                                "0%": { opacity: 1 },
+                                "50%": { opacity: 0.8 },
+                                "100%": { opacity: 1 },
+                              },
+                            }}
+                          >
+                            {backingUpId === log.id ? (
+                              <>
+                                <CircularProgress
+                                  size={18}
+                                  thickness={6}
+                                  sx={{
+                                    color: "#fff",
+                                    // Animation xoay mượt mà hơn
+                                    animationDuration: "550ms",
+                                    filter: "drop-shadow(0 0 5px rgba(255,255,255,0.5))",
+                                  }}
+                                />
+                                <Typography
+                                  variant="caption"
+                                  sx={{
+                                    fontWeight: "900",
+                                    fontSize: "0.85rem",
+                                    letterSpacing: "0.5px",
+                                    textShadow: "0px 1px 3px rgba(0,0,0,0.3)",
+                                    fontFamily: "'Roboto Mono', monospace", // Nhìn giống số điện tử hơn
+                                  }}
+                                >
+                                  {uploadProgress}%
+                                </Typography>
+                              </>
+                            ) : (
+                              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                                <BackupIcon sx={{ fontSize: 18 }} />
+                                <Typography sx={{ fontWeight: "800", letterSpacing: "1px" }}>
+                                  BACKUP NOW
+                                </Typography>
+                              </Box>
+                            )}
+                          </Box>
+
+                          {backingUpId === log.id && (
+                            <LinearProgress
+                              variant="determinate"
+                              value={uploadProgress}
+                              sx={{
+                                position: "absolute", bottom: 0, left: 0, right: 0, height: "100%",
+                                bgcolor: "transparent", opacity: 0.2,
+                                "& .MuiLinearProgress-bar": { backgroundColor: "#fff" }
+                              }}
+                            />
+                          )}
+                        </Button>
+                      </Box>
+                    </ListItem>
+                  ))}
+                </List>
+              </Paper>
+
+
+            </Container>
+
+
+
           </Box>
 
           {/* SNACKBAR THÔNG BÁO */}

@@ -1,3 +1,9 @@
+//login mới 
+
+
+
+
+
 import React, { useState } from 'react';
 import {
   Box,
@@ -31,134 +37,88 @@ const LoginLayout = ({ onLogin }) => {
   return (
     <Box
       sx={{
-        minHeight: '100vh',
+        // --- CỐ ĐỊNH KHUNG HÌNH VÀ XÓA SCROLL ---
+        height: '100vh', 
+        width: '100vw',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        p: 2,
+        p: 0,
         position: 'relative',
-        overflow: 'hidden',
+        overflow: 'hidden', // Chỉ khóa cuộn tại Layout này
 
-        // --- CẤU HÌNH GRADIENT ĐỘNG TOÀN MÀN HÌNH ---
-        backgroundSize: '400% 400%',
-        backgroundImage: 'linear-gradient(-45deg, #0f172a, #1e3a8a, #3b82f6, #0ea5e9)',
-        animation: 'mainBgGradient 15s ease infinite',
-
-        '@keyframes mainBgGradient': {
-          '0%': { backgroundPosition: '0% 50%' },
-          '50%': { backgroundPosition: '100% 50%' },
-          '100%': { backgroundPosition: '0% 50%' },
-        },
-
-        // --- THÊM HIỆU ỨNG CÁC ĐỐM SÁNG NEON CHẠY NGẦM ---
-        '&::before': {
-          content: '""',
-          position: 'absolute',
-          width: '140%',
-          height: '140%',
-          top: '-20%',
-          left: '-20%',
-          background: 'radial-gradient(circle, rgba(0,210,255,0.07) 0%, transparent 70%)',
-          animation: 'floatingLight 20s linear infinite',
-          zIndex: 0,
-        },
-
-        '@keyframes floatingLight': {
-          '0%': { transform: 'rotate(0deg) translate(0, 0)' },
-          '50%': { transform: 'rotate(180deg) translate(50px, 100px)' },
-          '100%': { transform: 'rotate(360deg) translate(0, 0)' },
-        }
+        // --- GRADIENT TĨNH (KHÔNG ANIMATION) ---
+        background: 'linear-gradient(135deg, #0f172a 0%, #1e3a8a 50%, #0ea5e9 100%)',
       }}
     >
-      <Container maxWidth="xs">
+      <Container 
+        maxWidth="xs" 
+        sx={{ 
+          display: 'flex', 
+          flexDirection: 'column',
+          alignItems: 'center',
+          zIndex: 1 
+        }}
+      >
         <Paper
           elevation={0}
           sx={{
-            p: 5,
+            p: 4, 
+            width: '100%',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
             borderRadius: '24px',
-            // Hiệu ứng Glassmorphism (Kính mờ)
-            background: 'rgba(255, 255, 255, 0.85)',
+            background: 'rgba(255, 255, 255, 0.88)', // Tăng độ đục một chút cho rõ
             backdropFilter: 'blur(10px)',
             border: '1px solid rgba(255, 255, 255, 0.3)',
-            boxShadow: '0 20px 40px rgba(0, 0, 0, 0.2)',
+            boxShadow: '0 20px 40px rgba(0, 0, 0, 0.3)',
+            overflow: 'hidden', // Đảm bảo Paper không tự hiện scroll nội bộ
           }}
         >
-          {/* Logo hoặc Icon biểu tượng */}
+          {/* Biểu tượng Tam giác lơ lửng */}
           <Box
             sx={{
-              width: 65, // Tăng nhẹ kích thước cho oai
-              height: 65,
-              borderRadius: '18px', // Bo góc hiện đại hơn
+              width: 120, 
+              height: 120,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              mb: 3,
+              mb: 0, 
+              mt: -1, 
               position: 'relative',
-              zIndex: 1,
-
-              // --- GRADIENT ANIMATION CHUYỂN ĐỘNG ---
-              backgroundSize: '200% 200%',
-              backgroundImage: 'linear-gradient(45deg, #2563eb, #00d2ff, #60a5fa, #2563eb)',
-              animation: 'iconGradient 4s ease infinite, floating 3s ease-in-out infinite',
-
-              // --- HIỆU ỨNG PHÁT SÁNG (GLOW) ---
-              boxShadow: '0 10px 25px rgba(37, 99, 235, 0.4), 0 0 15px rgba(0, 210, 255, 0.3)',
-
-              // Keyframes cho màu chạy
-              '@keyframes iconGradient': {
-                '0%': { backgroundPosition: '0% 50%' },
-                '50%': { backgroundPosition: '100% 50%' },
-                '100%': { backgroundPosition: '0% 50%' },
+              animation: 'triangleFloat 4s ease-in-out infinite',
+              '@keyframes triangleFloat': {
+                '0%, 100%': { transform: 'translateY(0px)' },
+                '50%': { transform: 'translateY(6px)' },
               },
-
-              // Keyframes cho hiệu ứng bay nhẹ bồng bềnh
-              '@keyframes floating': {
-                '0%, 100%': { transform: 'translateY(0)' },
-                '50%': { transform: 'translateY(-8px)' },
-              },
-
-              // Thêm một lớp bóng đổ phía dưới icon để tạo cảm giác 3D
-              '&::after': {
-                content: '""',
-                position: 'absolute',
-                bottom: '-15px',
-                left: '15%',
-                width: '70%',
-                height: '6px',
-                background: 'rgba(0,0,0,0.1)',
-                borderRadius: '50%',
-                filter: 'blur(4px)',
-                animation: 'shadowPulse 3s ease-in-out infinite',
-              },
-
-              '@keyframes shadowPulse': {
-                '0%, 100%': { transform: 'scale(1)', opacity: 0.4 },
-                '50%': { transform: 'scale(0.8)', opacity: 0.2 },
-              }
             }}
           >
-            <LockOutlined sx={{
-              color: '#fff',
-              fontSize: 34,
-              filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.2))' // Làm icon nổi khối hơn
-            }} />
+            <svg viewBox="0 0 2000 2000" style={{ width: '100%', height: '100%', filter: 'drop-shadow(0 0 12px rgba(0, 210, 255, 0.6))', display: 'block' }}>
+               <defs>
+                 <style>
+                   {`
+                     @keyframes neon1 { 0%, 100% { fill: #00d2ff; } 34% { fill: #3a7bd5; } 66% { fill: #00f2fe; } }
+                     @keyframes neon2 { 0%, 100% { fill: #00f2fe; } 34% { fill: #00d2ff; } 66% { fill: #3a7bd5; } }
+                     @keyframes neon3 { 0%, 100% { fill: #3a7bd5; } 34% { fill: #00f2fe; } 66% { fill: #00d2ff; } }
+                   `}
+                 </style>
+               </defs>
+               <polygon points="928 781 1021 951 784.5 1371.97 1618 1371.97 1530.32 1544 509 1539 928 781" style={{ strokeWidth: 0, animation: 'neon1 4s ease infinite both' }} />
+               <polygon points="1618 1371.97 784.5 1371.97 874.93 1211 1346 1211 923.1 456 1110.06 456 1618 1371.97" style={{ strokeWidth: 0, animation: 'neon3 4s ease infinite both' }} />
+               <polygon points="418 1372.74 509 1539 928 781 1162.32 1211 1346 1211 923.1 456 418 1372.74" style={{ strokeWidth: 0, animation: 'neon2 4s ease infinite both' }} />
+            </svg>
+            <Box sx={{ position: 'absolute', bottom: '15px', width: '50%', height: '5px', background: 'rgba(0, 210, 255, 0.2)', borderRadius: '50%', filter: 'blur(5px)' }} />
           </Box>
 
-          <Typography variant="h4" sx={{ fontWeight: 800, color: '#1e3a8a', mb: 1 }}>
-            Chào mừng
-          </Typography>
-          <Typography variant="body2" sx={{ color: '#64748b', mb: 4, textAlign: 'center' }}>
-            Đăng nhập để quản lý hệ thống Backup của bạn
+          <Typography variant="h4" sx={{ fontWeight: 800, color: '#1e3a8a', mb: 2 }}>
+            Đăng nhập
           </Typography>
 
           <Box component="form" onSubmit={handleSubmit} noValidate sx={{ width: '100%' }}>
-            <Stack spacing={3}>
-
+            <Stack spacing={2}> {/* Giảm spacing nhẹ để ôm form hơn */}
               <FormControl fullWidth>
-                <FormLabel sx={{ mb: 1, fontWeight: '600', color: '#1e293b', fontSize: '0.875rem' }}>
+                <FormLabel sx={{ mb: 0.5, fontWeight: '600', color: '#1e293b', fontSize: '0.875rem' }}>
                   Tên đăng nhập
                 </FormLabel>
                 <TextField
@@ -173,17 +133,13 @@ const LoginLayout = ({ onLogin }) => {
                         <PersonOutline sx={{ color: '#94a3b8' }} />
                       </InputAdornment>
                     ),
-                    sx: {
-                      borderRadius: '12px',
-                      bgcolor: '#f8fafc',
-                      '&:hover': { bgcolor: '#f1f5f9' },
-                    }
+                    sx: { borderRadius: '12px', bgcolor: '#f8fafc' }
                   }}
                 />
               </FormControl>
 
               <FormControl fullWidth>
-                <FormLabel sx={{ mb: 1, fontWeight: '600', color: '#1e293b', fontSize: '0.875rem' }}>
+                <FormLabel sx={{ mb: 0.5, fontWeight: '600', color: '#1e293b', fontSize: '0.875rem' }}>
                   Mật khẩu
                 </FormLabel>
                 <TextField
@@ -205,14 +161,29 @@ const LoginLayout = ({ onLogin }) => {
                         </IconButton>
                       </InputAdornment>
                     ),
-                    sx: {
-                      borderRadius: '12px',
-                      bgcolor: '#f8fafc',
-                      '&:hover': { bgcolor: '#f1f5f9' },
-                    }
+                    sx: { borderRadius: '12px', bgcolor: '#f8fafc' }
                   }}
                 />
               </FormControl>
+
+              {/* <Button
+                type="submit"
+                fullWidth
+                variant="contained"
+                sx={{
+                  mt: 1,
+                  py: 1.5,
+                  borderRadius: '12px',
+                  fontWeight: '800',
+                  textTransform: 'none',
+                  backgroundImage: 'linear-gradient(45deg, #00d2ff, #3a7bd5)',
+                  boxShadow: '0 4px 15px rgba(0, 210, 255, 0.3)',
+                  '&:hover': { opacity: 0.9 }
+                }}
+              >
+                Đăng nhập hệ thống
+              </Button> */}
+
 
               <Button
                 type="submit"
@@ -285,8 +256,8 @@ const LoginLayout = ({ onLogin }) => {
           </Box>
         </Paper>
 
-        <Typography variant="caption" sx={{ mt: 4, display: 'block', textAlign: 'center', color: 'rgba(255,255,255,0.7)' }}>
-          © 2026 Backup System Pro. All rights reserved.
+        <Typography variant="caption" sx={{ mt: 2, color: 'rgba(255,255,255,0.6)' }}>
+          © All rights reserved.
         </Typography>
       </Container>
     </Box>

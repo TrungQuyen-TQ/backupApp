@@ -16,6 +16,11 @@ import { registerMySQLHandlers } from "./ipc/db-mysql.js";
 import { registerMongoHandlers } from "./ipc/db-mongo.js";
 import { registerPostgresHandlers } from "./ipc/db-postgres.js";
 import cron from "node-cron";
+// main.js
+import { Menu } from 'electron';
+
+// Thêm dòng này để vô hiệu hóa Menu toàn cục
+Menu.setApplicationMenu(null);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -45,10 +50,14 @@ const TOKEN_PATH = path.join(app.getPath("userData"), "token.json");
 const SCOPES = [
   "https://www.googleapis.com/auth/drive.file",
   "https://www.googleapis.com/auth/gmail.send",
+  // THÊM 2 DÒNG NÀY ĐỂ LẤY ĐƯỢC EMAIL
+  "https://www.googleapis.com/auth/userinfo.email",
+  "https://www.googleapis.com/auth/userinfo.profile",
 ];
 
 const HISTORY_BACKUP_PATH = path.join(CONFIG_DIR, "history_backup.json");
 const HISTORY_UPLOAD_PATH = path.join(CONFIG_DIR, "history_upload.json");
+const INFO_PATH = path.join(CONFIG_DIR, "info.json");
 
 // Hàm phụ trợ lưu history
 // main.js - Sửa lại hàm saveHistory một chút cho Linh
@@ -90,21 +99,83 @@ let currentSshClient = null;
 let currentBackupController = null;
 
 
-// Sửa handler stop-backup-process
-// ipcMain.handle("stop-backup-process", async () => {
-//   if (currentSshClient) {
-//     try {
-//       currentSshClient.end(); // Ngắt kết nối SSH ngay lập tức
-//       currentSshClient = null;
-//       console.log("--- Đã ngắt tiến trình SSH thành công ---");
-//       return { success: true };
-//     } catch (err) {
-//       return { success: false, error: err.message };
+
+// main.js - Sửa handler authorize-gmail
+// ipcMain.handle("authorize-gmail", async (event) => {
+//   try {
+//     // 1. Mở trình duyệt để người dùng chọn tài khoản (login_hint để trống để họ tự chọn)
+//     const auth = await authenticate({
+//       keyfilePath: CREDENTIALS_PATH,
+//       scopes: SCOPES,
+//       authClientOptions: { prompt: 'select_account' }
+//     });
+
+//     if (auth.credentials) {
+//       // 2. Dùng thư viện googleapis để lấy thông tin user
+//       const oauth2 = google.oauth2({ version: 'v2', auth });
+//       const userInfo = await oauth2.userinfo.get();
+//       const email = userInfo.data.email;
+
+//       // 3. Lưu token theo email vừa lấy được
+//       const safeEmail = email.replace(/[^a-z0-9]/gi, "_");
+//       const SPECIFIC_TOKEN_PATH = path.join(app.getPath("userData"), `token_${safeEmail}.json`);
+//       fs.writeFileSync(SPECIFIC_TOKEN_PATH, JSON.stringify(auth.credentials));
+
+//       // Trả về email để Frontend tự động điền vào danh sách
+//       return { success: true, email: email };
 //     }
+//     return { success: false, error: "Không lấy được thông tin" };
+//   } catch (error) {
+//     return { success: false, error: error.message };
 //   }
-//   return { success: false, error: "Không có tiến trình SSH nào đang chạy" };
 // });
 
+
+// main.js
+// main.js
+ipcMain.handle("authorize-gmail", async (event) => {
+  try {
+    // 1. Mở trình duyệt xác thực
+    const auth = await authenticate({
+      keyfilePath: CREDENTIALS_PATH,
+      scopes: SCOPES,
+      authClientOptions: { prompt: 'select_account' }
+    });
+
+    if (auth && auth.credentials) {
+      // --- BƯỚC QUAN TRỌNG NHẤT: Đảm bảo Client có Token để gọi API ---
+      // Chúng ta tạo một OAuth2 client mới và nạp credentials vào
+      const oauth2Client = new google.auth.OAuth2();
+      oauth2Client.setCredentials(auth.credentials);
+
+      // 2. Dùng oauth2Client đã có token để lấy thông tin user
+      const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
+      const userInfo = await oauth2.userinfo.get();
+      const email = userInfo.data.email;
+
+      if (!email) throw new Error("Không lấy được email từ Google.");
+
+      // 3. Lưu token theo email như cũ
+      const safeEmail = email.replace(/[^a-z0-9]/gi, "_");
+      const SPECIFIC_TOKEN_PATH = path.join(app.getPath("userData"), `token_${safeEmail}.json`);
+      fs.writeFileSync(SPECIFIC_TOKEN_PATH, JSON.stringify(auth.credentials));
+
+      console.log(`✅ Xác thực thành công cho: ${email}`);
+
+      // Trả về kết quả cho React cập nhật UI
+      return { success: true, email: email };
+    }
+    
+    return { success: false, error: "Xác thực không hoàn tất." };
+  } catch (error) {
+    console.error("Lỗi authorize-gmail chi tiết:", error);
+    // Nếu là lỗi 401, thông báo rõ cho người dùng
+    const errorMsg = error.response?.data?.error?.message || error.message;
+    return { success: false, error: errorMsg };
+  }
+});
+
+// Sửa handler stop-backup-process
 ipcMain.handle("stop-backup-process", async () => {
   if (currentBackupController) {
     await currentBackupController.stop(); // Dừng tất cả mọi thứ
@@ -194,14 +265,14 @@ ipcMain.handle("get-drive-accounts", async () => {
 });
 
 // main.js - Cập nhật hàm lấy Token theo Email
+
+// main.js
+
+
 async function getAuthenticatedClient(email) {
-  // KIỂM TRA AN TOÀN: Nếu email không tồn tại hoặc không phải string
   if (!email || typeof email !== "string") {
     throw new Error(`Email xác thực không hợp lệ: ${email}`);
   }
-
-  // const safeEmail = email.replace(/[^a-z0-9]/gi, "_");
-  // const SPECIFIC_TOKEN_PATH = path.join(app.getPath("userData"), `token_${safeEmail}.json`);
 
   const safeEmail = email.replace(/[^a-z0-9]/gi, "_");
   const SPECIFIC_TOKEN_PATH = path.join(
@@ -209,6 +280,7 @@ async function getAuthenticatedClient(email) {
     `token_${safeEmail}.json`,
   );
 
+  // 1. Kiểm tra nếu đã có Token lưu trong máy rồi thì dùng luôn
   if (fs.existsSync(SPECIFIC_TOKEN_PATH)) {
     const token = JSON.parse(fs.readFileSync(SPECIFIC_TOKEN_PATH, "utf8"));
     const credentialsContent = fs.readFileSync(CREDENTIALS_PATH, "utf8");
@@ -225,15 +297,23 @@ async function getAuthenticatedClient(email) {
     return auth;
   }
 
-  // Nếu chưa có token cho email này, bắt đầu quy trình đăng nhập mới
+  // 2. Nếu CHƯA CÓ Token, bắt đầu quy trình đăng nhập mới (OAuth2)
+  // SỬA LẠI ĐOẠN NÀY CHO CHUẨN:
   const auth = await authenticate({
     keyfilePath: CREDENTIALS_PATH,
     scopes: SCOPES,
+    authClientOptions: {
+      prompt: 'select_account',    // Buộc Google hiện màn hình chọn tài khoản
+      login_hint: email,           // Gợi ý đúng Email Linh đã chọn từ giao diện
+      include_granted_scopes: true // Đảm bảo lấy đủ quyền
+    }
   });
 
+  // 3. Lưu Token vừa lấy được vào file để lần sau không phải đăng nhập lại
   if (auth.credentials) {
     fs.writeFileSync(SPECIFIC_TOKEN_PATH, JSON.stringify(auth.credentials));
   }
+  
   return auth;
 }
 
@@ -362,16 +442,55 @@ ipcMain.handle("check-database-info", async (event, dbConfig) => {
 });
 
 // Thêm vào main.js cùng các handler khác
-ipcMain.handle("update-drive-accounts", async (event, accounts) => {
+// ipcMain.handle("update-drive-accounts", async (event, accounts) => {
+//   try {
+//     const DRIVE_ACCOUNTS_PATH = path.join(
+//       process.cwd(),
+//       "configs",
+//       "drive_accounts.json",
+//     );
+//     fs.writeFileSync(DRIVE_ACCOUNTS_PATH, JSON.stringify(accounts, null, 2));
+//     return { success: true };
+//   } catch (error) {
+//     return { success: false, error: error.message };
+//   }
+// });
+
+
+// main.js - Thay thế handler update-drive-accounts của Linh bằng đoạn này
+ipcMain.handle("update-drive-accounts", async (event, updatedAccounts) => {
   try {
-    const DRIVE_ACCOUNTS_PATH = path.join(
-      process.cwd(),
-      "configs",
-      "drive_accounts.json",
+    const DRIVE_ACCOUNTS_PATH = path.join(process.cwd(), "configs", "drive_accounts.json");
+
+    // 1. Đọc danh sách cũ từ đúng file drive_accounts.json của Linh
+    let oldAccounts = [];
+    if (fs.existsSync(DRIVE_ACCOUNTS_PATH)) {
+      const content = fs.readFileSync(DRIVE_ACCOUNTS_PATH, "utf8");
+      oldAccounts = content ? JSON.parse(content) : [];
+    }
+
+    // 2. Tìm những email vừa bị xóa khỏi giao diện
+    const deletedAccounts = oldAccounts.filter(
+      old => !updatedAccounts.find(updated => updated.email === old.email)
     );
-    fs.writeFileSync(DRIVE_ACCOUNTS_PATH, JSON.stringify(accounts, null, 2));
+
+    // 3. Xóa file token vật lý tương ứng trong AppData
+    deletedAccounts.forEach(acc => {
+      const safeEmail = acc.email.replace(/[^a-z0-9]/gi, "_");
+      const tokenPath = path.join(app.getPath("userData"), `token_${safeEmail}.json`);
+      
+      if (fs.existsSync(tokenPath)) {
+        fs.unlinkSync(tokenPath); // Xóa file thật trên ổ cứng
+        console.log(`🗑️ Đã xóa file token vật lý: ${acc.email}`);
+      }
+    });
+
+    // 4. Ghi lại danh sách tài khoản mới vào file drive_accounts.json
+    fs.writeFileSync(DRIVE_ACCOUNTS_PATH, JSON.stringify(updatedAccounts, null, 2));
+    
     return { success: true };
   } catch (error) {
+    console.error("Lỗi khi cập nhật và xóa token:", error);
     return { success: false, error: error.message };
   }
 });
@@ -482,16 +601,19 @@ ipcMain.handle("get-temp-files", async (event, localPath) => {
   }
 });
 
-ipcMain.handle("upload-to-drive", async (event, { files, targetEmail }) => {
-  try {
-    console.log("Đang bắt đầu upload cho email:", targetEmail);
 
+ipcMain.handle("upload-to-drive", async (event, { files, targetEmail, folderName }) => {
+  try {
+    // 1. XÁC THỰC DUY NHẤT 1 LẦN: Lấy auth ngay đầu hàm để tránh lặp lại trình duyệt
+    console.log("--- Bắt đầu quy trình xác thực cho:", targetEmail, "---");
     const auth = await getAuthenticatedClient(targetEmail);
     const drive = google.drive({ version: "v3", auth });
+    // Dùng folderName động từ Linh truyền xuống
+    const targetFolderName = folderName || "SQL_Backups";
 
-    // 1. Tìm hoặc tạo folder SQL_Backups
+    // 2. Tìm hoặc tạo folder theo tên Linh đã điền
     const list = await drive.files.list({
-      q: "name = 'SQL_Backups' and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+      q: `name = '${targetFolderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
     });
 
     let folderId =
@@ -500,34 +622,34 @@ ipcMain.handle("upload-to-drive", async (event, { files, targetEmail }) => {
         : (
             await drive.files.create({
               requestBody: {
-                name: "SQL_Backups",
+                name: targetFolderName,
                 mimeType: "application/vnd.google-apps.folder",
               },
               fields: "id",
             })
           ).data.id;
 
-    // --- PHẦN SỬA ĐỂ TÍNH % CHÍNH XÁC ---
-    // Tính tổng dung lượng của tất cả các file trong danh sách upload
+    // 3. Tính toán tổng dung lượng toàn bộ Batch để hiển thị % chính xác
     const totalBatchSize = files.reduce(
       (acc, f) => acc + fs.statSync(f.path).size,
       0,
     );
-    // Biến lưu trữ tổng dung lượng của những file đã upload xong trước đó
+    
     let totalUploadedBeforeCurrentFile = 0;
-
     const uploadResults = [];
 
-    // 2. Vòng lặp upload từng file
+    console.log(`--- Chuẩn bị upload ${files.length} file ---`);
+
+    // 4. Vòng lặp upload từng file - Sử dụng chung thực thể 'drive' đã xác thực
     for (const fileObj of files) {
       try {
         const driveFileName = fileObj.name.replace(/\//g, " - ");
         const fileSize = fs.statSync(fileObj.path).size;
 
-        let lastBytesRead = 0; // Số byte đã đọc của file hiện tại trong lần update trước
+        let lastBytesRead = 0;
         let lastTime = Date.now();
 
-        // THỰC HIỆN UPLOAD
+        // THỰC HIỆN UPLOAD FILE (Không gọi lại trình duyệt nhờ dùng chung 'drive')
         const res = await drive.files.create(
           {
             requestBody: { name: driveFileName, parents: [folderId] },
@@ -540,16 +662,11 @@ ipcMain.handle("upload-to-drive", async (event, { files, targetEmail }) => {
               const duration = (currentTime - lastTime) / 1000;
 
               if (duration > 0.5) {
-                // Tốc độ: Tính dựa trên lượng data thực tế truyền đi của file hiện tại
                 const bytesSinceLast = evt.bytesRead - lastBytesRead;
                 const speedMBps = bytesSinceLast / duration / (1024 * 1024);
 
-                // TIẾN TRÌNH TỔNG (%): (Data các file cũ + Data file hiện tại) / Tổng toàn bộ
-                const overallUploaded =
-                  totalUploadedBeforeCurrentFile + evt.bytesRead;
-                const overallProgress = Math.round(
-                  (overallUploaded / totalBatchSize) * 100,
-                );
+                const overallUploaded = totalUploadedBeforeCurrentFile + evt.bytesRead;
+                const overallProgress = Math.round((overallUploaded / totalBatchSize) * 100);
 
                 event.sender.send("upload-progress", {
                   fileName: fileObj.name,
@@ -564,11 +681,9 @@ ipcMain.handle("upload-to-drive", async (event, { files, targetEmail }) => {
           },
         );
 
-        console.log(
-          `✅ File [${driveFileName}] đã lên Drive. ID: ${res.data.id}`,
-        );
+        console.log(`✅ Thành công: [${driveFileName}]`);
 
-        // Cộng dồn dung lượng file vừa hoàn thành để tính tiếp cho file sau
+        // Cộng dồn dung lượng file hoàn thành để tính % cho file kế tiếp
         totalUploadedBeforeCurrentFile += fileSize;
 
         event.sender.send("file-done", {
@@ -582,8 +697,9 @@ ipcMain.handle("upload-to-drive", async (event, { files, targetEmail }) => {
           driveId: res.data.id,
         });
       } catch (uploadError) {
-        console.error(`❌ Lỗi upload file ${fileObj.name}:`, uploadError);
-        // Nếu lỗi, vẫn phải cộng dung lượng file lỗi vào để tiến trình chung không bị lệch
+        console.error(`❌ Lỗi tại file ${fileObj.name}:`, uploadError.message);
+        
+        // Nếu lỗi 1 file, vẫn cộng size vào để thanh Progress không bị "nhảy ngược"
         totalUploadedBeforeCurrentFile += fs.statSync(fileObj.path).size;
 
         event.sender.send("file-done", {
@@ -591,16 +707,19 @@ ipcMain.handle("upload-to-drive", async (event, { files, targetEmail }) => {
           status: "Lỗi",
           error: uploadError.message,
         });
+        
         uploadResults.push({ name: fileObj.name, success: false });
       }
     }
 
     return { success: true, results: uploadResults };
   } catch (error) {
-    console.error("❌ Lỗi tổng quát upload-to-drive:", error);
+    console.error("❌ Lỗi hệ thống trong upload-to-drive:", error);
     return { success: false, error: error.message };
   }
 });
+
+
 
 // Thêm đoạn này vào main.js (bên cạnh các ipcMain.handle khác)
 ipcMain.handle("delete-temp-files", async (event, files) => {
@@ -617,11 +736,16 @@ ipcMain.handle("delete-temp-files", async (event, files) => {
   }
 });
 
+
+
+// 1. Handler LƯU cấu hình: Sửa đường dẫn để đảm bảo ghi được file
 ipcMain.handle("save-login-config", async (event, newConfig) => {
   console.log("Saving login config:", newConfig);
-  const rootPath = app.getAppPath();
-  const filePath = path.join(rootPath, 'configs', 'info.json');
-  console.log("Đường dẫn thực tế:", filePath);
+  
+  // SỬA: Sử dụng CONFIG_DIR (thường trỏ đến thư mục làm việc) thay vì getAppPath
+  // Vì getAppPath trong bản build sẽ trỏ vào file .asar (chỉ đọc), không ghi được
+  const filePath = path.join(CONFIG_DIR, 'info.json');
+  console.log("Đường dẫn lưu info.json:", filePath);
 
   try {
     let data = { serverConfigs: [] };
@@ -629,29 +753,76 @@ ipcMain.handle("save-login-config", async (event, newConfig) => {
     // 1. Đọc file cũ nếu tồn tại
     if (fs.existsSync(filePath)) {
       const fileContent = fs.readFileSync(filePath, "utf-8");
-      data = JSON.parse(fileContent);
+      // Kiểm tra nếu file có nội dung thì mới parse
+      data = fileContent ? JSON.parse(fileContent) : { serverConfigs: [] };
     }
 
+    // 2. Kiểm tra trùng lặp dựa trên nhãn (label)
     const existingIndex = data.serverConfigs.findIndex(
-      (item) => item.label.toLowerCase() === newConfig.label.toLowerCase(),
+      (item) => item.label.toLowerCase() === newConfig.label.toLowerCase()
     );
 
     if (existingIndex > -1) {
-      // Đè lên giá trị cũ
+      // Nếu đã có thì cập nhật thông tin mới (đè lên)
       data.serverConfigs[existingIndex] = newConfig;
     } else {
-      // Thêm mới vào danh sách
+      // Nếu chưa có thì thêm mới vào danh sách
       data.serverConfigs.push(newConfig);
     }
 
-    // 3. Ghi lại vào file
+    // 3. Ghi lại vào file với định dạng đẹp (indent 2)
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
 
     return { success: true };
   } catch (error) {
+    console.error("Lỗi lưu info.json:", error);
     return { success: false, error: error.message };
   }
 });
+
+// 2. Handler LẤY cấu hình: Giúp React lấy danh sách "danh bạ" server
+// ipcMain.handle("get-login-configs", async () => {
+//   const filePath = path.join(CONFIG_DIR, 'info.json');
+//   try {
+//     if (fs.existsSync(filePath)) {
+//       const content = fs.readFileSync(filePath, "utf-8");
+//       return content ? JSON.parse(content) : { serverConfigs: [] };
+//     }
+//     return { serverConfigs: [] };
+//   } catch (error) {
+//     console.error("Lỗi đọc info.json:", error);
+//     return { serverConfigs: [] };
+//   }
+// });
+
+
+
+// main.js
+// main.js - Sửa lại chính xác hàm này
+ipcMain.handle('get-login-configs', async () => {
+  try {
+    // 1. Dùng trực tiếp CONFIG_DIR để đảm bảo đồng nhất với lệnh GHI
+    const filePath = path.join(CONFIG_DIR, 'info.json'); 
+    
+    // 2. Kiểm tra nếu file không tồn tại thì trả về mảng rỗng ngay, không để lỗi crash
+    if (!fs.existsSync(filePath)) {
+      return { success: true, serverConfigs: [] };
+    }
+
+    const data = fs.readFileSync(filePath, 'utf8');
+    const json = JSON.parse(data);
+    
+    // 3. Log ra terminal của Electron để bạn kiểm tra xem Backend đã thấy gì
+    console.log(">>> Backend đọc được từ info.json:", json.serverConfigs?.length || 0, "servers");
+
+    return { success: true, serverConfigs: json.serverConfigs || [] }; 
+  } catch (error) {
+    console.error("Lỗi get-login-configs:", error.message);
+    return { success: false, error: error.message };
+  }
+});
+
+
 
 // Thêm vào main.js
 ipcMain.handle("get-databases-list", async (event, dbConfig) => {
@@ -736,31 +907,31 @@ const createWindow = () => {
   // main.js
   // main.js
   win.webContents.on("did-finish-load", () => {
-    win.webContents
-      .executeJavaScript(
-        `
-      document.querySelectorAll('*').forEach(el => {
-        // 1. CHỐT CHẶN: Tuyệt đối không can thiệp vào Input, Icon và các thành phần Form
-        const isInputArea = el.closest('.MuiFormControl-root') || 
-                            el.closest('.MuiInputBase-root') ||
-                            el.tagName === 'SVG' ||
-                            el.tagName === 'INPUT' ||
-                            el.classList.contains('MuiSvgIcon-root');
+    // win.webContents
+    //   .executeJavaScript(
+    //     `
+    //   document.querySelectorAll('*').forEach(el => {
+    //     // 1. CHỐT CHẶN: Tuyệt đối không can thiệp vào Input, Icon và các thành phần Form
+    //     const isInputArea = el.closest('.MuiFormControl-root') || 
+    //                         el.closest('.MuiInputBase-root') ||
+    //                         el.tagName === 'SVG' ||
+    //                         el.tagName === 'INPUT' ||
+    //                         el.classList.contains('MuiSvgIcon-root');
 
-        if (isInputArea) {
-          return; // Bỏ qua hoàn toàn khu vực nhập liệu và icon mắt
-        }
+    //     if (isInputArea) {
+    //       return; // Bỏ qua hoàn toàn khu vực nhập liệu và icon mắt
+    //     }
 
-        // 2. Chỉ kích hoạt cuộn cho các container chứa danh sách hoặc nội dung lớn
-        // scrollHeight > clientHeight + 5 để tránh hiện thanh cuộn thừa do sai số pixel
-        if (el.scrollHeight > el.clientHeight + 5) {
-          el.style.overflowY = 'auto'; // Dùng auto để MUI tự xử lý mượt hơn
-          el.style.display = 'block';
-        }
-      });
-    `,
-      )
-      .catch((err) => console.error("Lỗi thực thi Scrolling Script:", err));
+    //     // 2. Chỉ kích hoạt cuộn cho các container chứa danh sách hoặc nội dung lớn
+    //     // scrollHeight > clientHeight + 5 để tránh hiện thanh cuộn thừa do sai số pixel
+    //     if (el.scrollHeight > el.clientHeight + 5) {
+    //       el.style.overflowY = 'auto'; // Dùng auto để MUI tự xử lý mượt hơn
+    //       el.style.display = 'block';
+    //     }
+    //   });
+    // `,
+    //   )
+    //   .catch((err) => console.error("Lỗi thực thi Scrolling Script:", err));
   });
 };
 

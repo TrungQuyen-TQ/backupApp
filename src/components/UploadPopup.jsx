@@ -19,6 +19,7 @@ import {
   OutlinedInput,
   Chip,
   useTheme,
+  TextField,
 } from "@mui/material";
 
 const ITEM_HEIGHT = 48;
@@ -49,6 +50,10 @@ const UploadPanel = ({ onUpload, showMsg, formdata }) => {
   const [targetEmails, setTargetEmails] = useState([]);
   const [driveAccounts, setDriveAccounts] = useState([]);
   const [uploadTarget, setUploadTarget] = useState("drive");
+  // 1. Thêm state mới (Đặt giá trị mặc định là SQL_Backups)
+  const [folderName, setFolderName] = useState("SQL_Backups");
+
+
 
   useEffect(() => {
     loadFiles();
@@ -148,7 +153,8 @@ const UploadPanel = ({ onUpload, showMsg, formdata }) => {
     // 1. Chờ quá trình upload hoàn tất (onUpload cần là một async function từ App.jsx)
     try {
       setIsLoading(true); // Hiển thị loading trong khi chờ dọn dẹp
-      await onUpload(filesToUpload, targetEmails);
+      // TRUYỀN THÊM folderName VÀO ĐÂY
+      await onUpload(filesToUpload, targetEmails, folderName);
 
       // 2. Sau khi upload và server xóa file xong, ta gọi lại loadFiles để cập nhật UI
       // Thêm một chút delay nhỏ (khoảng 500ms) để đảm bảo ổ cứng đã kịp cập nhật trạng thái xóa
@@ -160,6 +166,7 @@ const UploadPanel = ({ onUpload, showMsg, formdata }) => {
     } catch (error) {
       showMsg("Lỗi trong quá trình xử lý sau upload", "error");
     } finally {
+      setIsLoading(false);
       // Logic setIsLoading(false) sẽ nằm trong loadFiles nên không cần ở đây
     }
   };
@@ -309,6 +316,23 @@ const UploadPanel = ({ onUpload, showMsg, formdata }) => {
 
       {uploadTarget === "drive" ? (
         <Box sx={{ mt: 2 }}>
+
+          <Box sx={{ mb: 3 }}>
+            <TextField
+              fullWidth
+              label="Tên thư mục lưu trữ trên Drive"
+              variant="outlined"
+              size="small"
+              value={folderName}
+              onChange={(e) => setFolderName(e.target.value)}
+              placeholder="Mặc định: SQL_Backups"
+              //helperText="File sẽ được tự động gom nhóm vào thư mục này"
+              sx={{
+                '& .MuiOutlinedInput-root': { borderRadius: '10px' }
+              }}
+            />
+          </Box>
+
           <FormControl
             fullWidth
             size="small"
@@ -384,6 +408,7 @@ const UploadPanel = ({ onUpload, showMsg, formdata }) => {
               </Typography>
             )}
           </FormControl>
+          
         </Box>
       ) : (
         <Typography
