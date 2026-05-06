@@ -182,61 +182,7 @@ function App() {
 
 
 
-  // const onScanAndConnect = async (serverConfig) => {
-  //   setIsLoading(true);
-  //   try {
-  //     // 1. Lấy toàn bộ danh sách cấu hình từ file info.json để tìm các DB cùng IP
-  //     const configRes = await window.electronAPI.getLoginConfigs();
-  //     if (!configRes.success) return showMsg("Không thể đọc danh sách cấu hình", "error");
 
-  //     // 2. Lọc ra tất cả các cấu hình có cùng địa chỉ IP với server vừa nhấn
-  //     const relatedConfigs = configRes.serverConfigs.filter(
-  //       (cfg) => cfg.server === serverConfig.server
-  //     );
-
-  //     showMsg(`🚀 Đang quét tổng lực ${relatedConfigs.length} loại DB trên server ${serverConfig.server}...`, "info");
-
-  //     let allNewLogs = [];
-
-  //     // 3. Vòng lặp quét từng loại DB (MySQL, MSSQL, MongoDB, Postgres...)
-  //     for (const config of relatedConfigs) {
-  //       const type = config.dbType?.toLowerCase();
-  //       let dbRes;
-
-  //       // Gọi đúng hàm quét theo loại DB tương ứng
-  //       if (type === "mysql") dbRes = await window.electronAPI.db.getMySQL(config);
-  //       else if (type === "mongodb") dbRes = await window.electronAPI.db.getMongo(config);
-  //       else if (type === "postgresql") dbRes = await window.electronAPI.db.getPostgres(config);
-  //       else dbRes = await window.electronAPI.db.getMSSQL(config);
-
-  //       if (dbRes && dbRes.success && dbRes.databases) {
-  //         // Tạo log cho từng Database tìm thấy trong loại DB này
-  //         const entries = dbRes.databases.map((dbName) => ({
-  //           ...config, // Giữ nguyên user/pass của từng loại DB
-  //           id: Date.now() + Math.random(),
-  //           database: dbName,
-  //           time: new Date().toLocaleTimeString(),
-  //           success: true,
-  //         }));
-  //         allNewLogs = [...allNewLogs, ...entries];
-  //       }
-  //     }
-
-  //     // 4. Cập nhật kết quả xuống bảng lịch sử phía dưới
-  //     if (allNewLogs.length > 0) {
-  //       setConnectionLogs((prev) => [...allNewLogs, ...prev]);
-  //       showMsg(`✅ Thành công! Đã tìm thấy tổng cộng ${allNewLogs.length} Database.`, "success");
-  //     } else {
-  //       showMsg("Không tìm thấy Database nào khả dụng trên server này.", "warning");
-  //     }
-
-  //   } catch (err) {
-  //     console.error("Lỗi onScanAndConnect:", err);
-  //     showMsg("Lỗi hệ thống: " + err.message, "error");
-  //   } finally {
-  //     setIsLoading(false);
-  //   }
-  // };
 
 
   const onScanAndConnect = async (serverConfig) => {
@@ -1006,7 +952,16 @@ function App() {
           </Modal>
 
           {/* 2. NỘI DUNG CHÍNH BÊN PHẢI */}
-          <Box component="main" sx={{ flexGrow: 1, p: 3, overflowY: 'auto' }}>
+          <Box component="main"
+            sx={{
+              flex: 1,           // Thay flexGrow bằng flex: 1
+              minWidth: 0,       // QUAN TRỌNG: Ngăn nội dung đẩy bung layout
+              p: 3,
+              height: '100vh',   // Cố định chiều cao
+              overflowY: 'scroll', // ÉP HIỆN THANH CUỘN LUÔN LUÔN để không bị giật 15px
+              bgcolor: '#eaeff1'
+            }}
+          >
 
             {console.log(">>> [App] Tab đang hiển thị là:", activeTab)}
             <Container maxWidth="lg" sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
