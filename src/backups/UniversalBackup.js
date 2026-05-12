@@ -5,32 +5,82 @@ import { Client as PgClient } from "pg";
 import mysql from "mysql2/promise";
 import { MongoClient } from "mongodb";
 import mssql from "mssql";
-import { getMysqlStats } from "./mysql.js";
 
 function shellQuote(value) {
   return `'${String(value).replace(/'/g, "'\\''")}'`;
 }
 
-// --- CÁC HÀM LẤY PHIÊN BẢN (SIÊU NHANH) ---
-async function getPgVersion(client) {
+// --- CÁC HÀM LẤY THỐNG KÊ CHI TIẾT ---
+async function getPgStats(client) {
   const res = await client.query("SELECT version();");
-  return { shortVersion: res.rows[0].version.split(" ")[1], rowCounts: {} };
+  const version = res.rows[0].version.split(" ")[1];
+  
+  // Lấy danh sách các bảng và số dòng ước tính (nhanh hơn COUNT(*) cho Postgres)
+  const statsRes = await client.query(`
+    SELECT relname AS table_name, n_live_tup AS row_count
+    FROM pg_stat_user_tables
+  `);
+  
+  let rowCounts = {};
+  statsRes.rows.forEach(row => {
+    rowCounts[row.table_name] = row.row_count;
+  });
+
+  return { shortVersion: version, rowCounts };
 }
 
-async function getMysqlVersion(connection) {
-  const [rows] = await connection.query("SELECT VERSION() as version");
-  return { shortVersion: rows[0].version, rowCounts: {} };
+async function getMysqlStats(connection, dbName) {
+  const [versionRows] = await connection.query("SELECT VERSION() as version");
+  const shortVersion = versionRows[0].version;
+
+  const [tables] = await connection.query(`
+    SELECT TABLE_NAME, TABLE_ROWS 
+    FROM INFORMATION_SCHEMA.TABLES 
+    WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE'
+  `, [dbName]);
+
+  let rowCounts = {};
+  for (const row of tables) {
+    rowCounts[row.TABLE_NAME] = row.TABLE_ROWS || 0;
+  }
+  return { shortVersion, rowCounts };
 }
 
-async function getMongoVersion(client) {
-  const admin = client.db("admin");
-  const status = await admin.command({ serverStatus: 1 });
-  return { shortVersion: status.version, rowCounts: {} };
+async function getMongoStats(client, dbName) {
+  const db = client.db(dbName);
+  const collections = await db.listCollections().toArray();
+  const admin = db.admin();
+  const info = await admin.serverStatus();
+  
+  let rowCounts = {};
+  for (const col of collections) {
+    const count = await db.collection(col.name).countDocuments();
+    rowCounts[col.name] = count;
+  }
+  return { shortVersion: info.version, rowCounts };
 }
 
-async function getSqlServerVersion(pool) {
-  const res = await pool.request().query("SELECT @@VERSION as version");
-  return { shortVersion: res.recordset[0].version.split("-")[0].trim(), rowCounts: {} };
+async function getSqlServerStats(pool) {
+  const versionRaw = await pool.request().query("SELECT @@VERSION as version");
+  const shortVersion = versionRaw.recordset[0].version.split("-")[0].split("\n")[0].trim();
+
+  const tablesQuery = await pool.request().query(`
+    SELECT TABLE_NAME 
+    FROM INFORMATION_SCHEMA.TABLES 
+    WHERE TABLE_TYPE = 'BASE TABLE' AND TABLE_NAME NOT LIKE 'sys%'
+  `);
+
+  const allTables = tablesQuery.recordset.map((row) => row.TABLE_NAME);
+  let rowCounts = {};
+  for (const table of allTables) {
+    try {
+      const result = await pool.request().query(`SELECT COUNT(*) as count FROM [${table}]`);
+      rowCounts[table] = result.recordset[0].count;
+    } catch (err) {
+      rowCounts[table] = "N/A";
+    }
+  }
+  return { shortVersion, rowCounts };
 }
 
 // --- HÀM THỰC THI SSH ---
@@ -181,7 +231,7 @@ export async function universalBackupHandler(formData, event, onSshReady) {
     mainCommand = `export PGPASSWORD='${formData.dbPassword}' && pg_dump -h localhost -U "${formData.dbUser}" -d "${dbName}" -f "${remoteFile}" && 7za a -mx1 -p${safeZipPass} -mhe=on "${transferConfig.remoteZipFile}" "${remoteFile}" && rm -f "${remoteFile}"`;
     try {
       const pg = new PgClient({ host: formData.server, user: formData.dbUser, password: formData.dbPassword, database: dbName, port: formData.dbPort || 5432 });
-      await pg.connect(); dbStats = await getPgVersion(pg); await pg.end();
+      await pg.connect(); dbStats = await getPgStats(pg); await pg.end();
     } catch (e) { }
   }
   else if (dbType === "mysql") {

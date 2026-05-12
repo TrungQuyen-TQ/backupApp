@@ -45,7 +45,6 @@ const CONFIG_DIR = path.join(process.cwd(), "configs");
 if (!fs.existsSync(CONFIG_DIR)) fs.mkdirSync(CONFIG_DIR);
 
 const CREDENTIALS_PATH = path.join(CONFIG_DIR, "client_secret.json");
-const CONTACTS_PATH = path.join(CONFIG_DIR, "contacts.json");
 const TOKEN_PATH = path.join(app.getPath("userData"), "token.json");
 const SCOPES = [
   "https://www.googleapis.com/auth/drive.file",
@@ -355,15 +354,20 @@ async function getDatabaseStats(pool) {
 // 3. HÀM GỬI EMAIL THÔNG BÁO
 // ==========================================================
 async function sendEmailNotifications(auth, fileName, stats) {
-  if (!fs.existsSync(CONTACTS_PATH)) return;
-  const contacts = JSON.parse(fs.readFileSync(CONTACTS_PATH, "utf8"));
+  if (!fs.existsSync(DRIVE_ACCOUNTS_PATH)) return;
+  const accountsData = JSON.parse(fs.readFileSync(DRIVE_ACCOUNTS_PATH, "utf8"));
+  // Nếu là array (cấu trúc mới) thì lấy danh sách email, nếu là object cũ thì xử lý tương ứng
+  const emails = Array.isArray(accountsData) 
+    ? accountsData.map(acc => acc.email) 
+    : (accountsData.accounts ? accountsData.accounts.map(acc => acc.email) : []);
+
   const gmail = google.gmail({ version: "v1", auth });
 
   const tableRowsHtml = Object.entries(stats.rowCounts)
     .map(([table, count]) => `<li><b>${table}</b>: ${count} dòng</li>`)
     .join("");
 
-  for (const email of contacts.emails) {
+  for (const email of emails) {
     try {
       const subject = `🔔 [Backup Report] ${fileName}`;
       const utf8Subject = `=?utf-8?B?${Buffer.from(subject).toString("base64")}?=`;
