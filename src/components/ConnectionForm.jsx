@@ -19,7 +19,6 @@ import ServerIcon from "@mui/icons-material/Computer";
 import DbIcon from "@mui/icons-material/Storage";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import LoginIcon from "@mui/icons-material/Login";
-import dataConfig from "../../configs/info.json";
 
 const FormRow = ({
   label,

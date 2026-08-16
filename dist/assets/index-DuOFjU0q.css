@@ -1,0 +1,64 @@
+body {
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
+    sans-serif;
+  margin: auto;
+
+  padding: 2rem;
+}
+/* src/index.css */
+
+/* 1. Đảm bảo toàn bộ ứng dụng chiếm hết chiều cao màn hình */
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;   /* Cho phép cuộn dọc */
+  overflow-x: hidden; /* TRIỆT TIÊU CUỘN NGANG */
+  width: 100vw;       /* Ép độ rộng bằng đúng khung hình */
+  /* overflow: hidden;  */
+  /* Ngăn scrollbar chính của cửa sổ app */
+}
+
+/* 2. Font chữ chuẩn cho Desktop App */
+body {
+  font-family: "Roboto", "Segoe UI", "Tahoma", "Geneva", "Verdana", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 3. Tùy chỉnh thanh cuộn (Scrollbar) cho hiện đại hơn */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* 4. Chống chọn văn bản linh tinh (làm App giống Native hơn) */
+* {
+  user-select: none;
+}
+
+/* Cho phép chọn văn bản trong các ô Input */
+input, textarea {
+  user-select: text;
+}
+
+/* Keyframes for gradient animation */
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}

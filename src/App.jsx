@@ -104,7 +104,7 @@ function App() {
 
   const [showUploadPopup, setShowUploadPopup] = useState(false);
 
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(true);
 
   // Quản lý trạng thái thông báo (Snackbar)
   const [snackbar, setSnackbar] = useState({
@@ -585,18 +585,12 @@ function App() {
   // App.jsx
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: "#eaeff1" }}>
-      {/* Kiểm tra đăng nhập ở đây */}
-      {console.log(">>> [App] Đang vẽ giao diện (Render)...")}
-      {!isLoggedIn ? (
-        <LoginLayout onLogin={handleLogin} />
-      ) : (
-        <Box sx={{ display: 'flex', minHeight: '100vh', width: '100%', bgcolor: '#eaeff1' }}>
-          {/* 1. SIDEBAR CỐ ĐỊNH BÊN TRÁI */}
-          <Sidebar
-            activeTab={activeTab}
-            setActiveTab={setActiveTab}
-            onLogout={() => setIsLoggedIn(false)}
-          />
+      <Box sx={{ display: 'flex', minHeight: '100vh', width: '100%', bgcolor: '#eaeff1' }}>
+        {/* 1. SIDEBAR CỐ ĐỊNH BÊN TRÁI */}
+        <Sidebar
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+        />
           {/* MODAL 1: MULTIPLE SELECT */}
           <Modal
             open={showInputDbModal}
@@ -1387,8 +1381,6 @@ function App() {
             </Alert>
           </Snackbar>
         </Box>
-      )
-      }
       {/* Chèn ở bất kỳ đâu trong phần return (thường là gần Snackbar) */}
       <ConfirmStopModal
         open={showConfirmStopModal}

@@ -231,62 +231,64 @@ const Sidebar = ({ activeTab, setActiveTab, onLogout }) => {
           ))}
         </List>
 
-        {/* NÚT LOGOUT RIÊNG BIỆT Ở DƯỚI CÙNG */}
-        <Box sx={{ p: 2 }}>
-          <Divider sx={{ bgcolor: 'rgba(255,255,255,0.1)', mb: 2 }} />
-          <ListItemButton
-            onClick={onLogout}
-            sx={{
-              borderRadius: '12px',
-              color: '#ff4d4d', // Màu đỏ mặc định cho text và icon
-              position: 'relative',
-              overflow: 'hidden',
-              transition: 'all 0.3s ease-in-out',
+        {/* NÚT LOGOUT RIÊNG BIỆT Ở DƯỚI CÙNG (Chỉ hiện khi có truyền onLogout) */}
+        {onLogout && (
+          <Box sx={{ p: 2 }}>
+            <Divider sx={{ bgcolor: 'rgba(255,255,255,0.1)', mb: 2 }} />
+            <ListItemButton
+              onClick={onLogout}
+              sx={{
+                borderRadius: '12px',
+                color: '#ff4d4d', // Màu đỏ mặc định cho text và icon
+                position: 'relative',
+                overflow: 'hidden',
+                transition: 'all 0.3s ease-in-out',
 
-              // Trạng thái Hover và Click (Mui-selected hoặc :active)
-              '&:hover, &:active': {
-                color: '#fff', // Chữ chuyển sang trắng
-                background: 'linear-gradient(45deg, #ff4d4d, #b30000, #ff4d4d)', // Gradient đỏ đậm
-                backgroundSize: '200% 200%',
-                animation: 'gradientMove 1.5s ease infinite', // Animation chạy dải màu
-                boxShadow: '0 4px 15px rgba(255, 77, 77, 0.4)',
-                transform: 'translateY(-2px)', // Nhấc nhẹ nút lên
+                // Trạng thái Hover và Click (Mui-selected hoặc :active)
+                '&:hover, &:active': {
+                  color: '#fff', // Chữ chuyển sang trắng
+                  background: 'linear-gradient(45deg, #ff4d4d, #b30000, #ff4d4d)', // Gradient đỏ đậm
+                  backgroundSize: '200% 200%',
+                  animation: 'gradientMove 1.5s ease infinite', // Animation chạy dải màu
+                  boxShadow: '0 4px 15px rgba(255, 77, 77, 0.4)',
+                  transform: 'translateY(-2px)', // Nhấc nhẹ nút lên
 
-                '& .MuiListItemIcon-root': {
-                  color: '#fff',
-                  transform: 'rotate(-10deg)', // Xoay nhẹ icon logout tạo hiệu ứng động
+                  '& .MuiListItemIcon-root': {
+                    color: '#fff',
+                    transform: 'rotate(-10deg)', // Xoay nhẹ icon logout tạo hiệu ứng động
+                  },
                 },
-              },
 
-              // Tinh chỉnh Icon mặc định
-              '& .MuiListItemIcon-root': {
-                color: '#ff4d4d',
-                minWidth: 40,
-                transition: 'all 0.3s ease',
-              },
+                // Tinh chỉnh Icon mặc định
+                '& .MuiListItemIcon-root': {
+                  color: '#ff4d4d',
+                  minWidth: 40,
+                  transition: 'all 0.3s ease',
+                },
 
-              // Tinh chỉnh Text mặc định
-              '& .MuiListItemText-primary': {
-                fontWeight: 700,
-                letterSpacing: '0.5px',
-              },
+                // Tinh chỉnh Text mặc định
+                '& .MuiListItemText-primary': {
+                  fontWeight: 700,
+                  letterSpacing: '0.5px',
+                },
 
-              // Định nghĩa animation cho nền
-              '@keyframes gradientMove': {
-                '0%': { backgroundPosition: '0% 50%' },
-                '50%': { backgroundPosition: '100% 50%' },
-                '100%': { backgroundPosition: '0% 50%' },
-              },
-            }}
-          >
-            <ListItemIcon>
-              <LogoutIcon />
-            </ListItemIcon>
-            {!isCollapsed && (
-              <ListItemText primary="Đăng xuất" />
-            )}
-          </ListItemButton>
-        </Box>
+                // Định nghĩa animation cho nền
+                '@keyframes gradientMove': {
+                  '0%': { backgroundPosition: '0% 50%' },
+                  '50%': { backgroundPosition: '100% 50%' },
+                  '100%': { backgroundPosition: '0% 50%' },
+                },
+              }}
+            >
+              <ListItemIcon>
+                <LogoutIcon />
+              </ListItemIcon>
+              {!isCollapsed && (
+                <ListItemText primary="Đăng xuất" />
+              )}
+            </ListItemButton>
+          </Box>
+        )}
       </Paper>
     </>
 
