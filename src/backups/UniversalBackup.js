@@ -5,6 +5,7 @@ import { Client as PgClient } from "pg";
 import mysql from "mysql2/promise";
 import { MongoClient } from "mongodb";
 import mssql from "mssql";
+import { getZipPassword } from "../utils/configHelper.js";
 
 function shellQuote(value) {
   return `'${String(value).replace(/'/g, "'\\''")}'`;
@@ -213,11 +214,7 @@ export async function universalBackupHandler(formData, event, onSshReady) {
   const localPath = path.join(formData.localPath, `${baseName}.7z`);
 
   // 2. Lấy mật khẩu Zip
-  let zipPass = "admin123";
-  try {
-    const pPath = path.join(process.cwd(), "configs", "passwordzip.json");
-    if (fs.existsSync(pPath)) zipPass = JSON.parse(fs.readFileSync(pPath, "utf8")).password;
-  } catch (e) { console.warn("Dùng mật khẩu Zip mặc định."); }
+  const zipPass = getZipPassword();
 
   const safeZipPass = shellQuote(zipPass);
   const transferConfig = { remoteZipFile: `/tmp/${baseName}.7z`, localPath };

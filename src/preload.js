@@ -79,6 +79,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
 
   getLoginConfigs: () => ipcRenderer.invoke("get-login-configs"),
+  getZipPassword: () => ipcRenderer.invoke("get-zip-password"),
+  saveZipPassword: (newPassword) => ipcRenderer.invoke("save-zip-password", newPassword),
 
   // preload.js thêm vào trong contextBridge
   onBackupProgress: (callback) => {

@@ -18,6 +18,14 @@ import { registerPostgresHandlers } from "./ipc/db-postgres.js";
 import cron from "node-cron";
 // main.js
 import { Menu } from 'electron';
+import {
+  getConfigFile,
+  getWritableConfigFile,
+  getZipPassword,
+  saveZipPassword,
+} from "./utils/configHelper.js";
+
+export { getConfigFile, getWritableConfigFile, getZipPassword, saveZipPassword };
 
 // Thêm dòng này để vô hiệu hóa Menu toàn cục
 Menu.setApplicationMenu(null);
@@ -39,12 +47,25 @@ if (started) {
   app.quit();
 }
 
-// --- Cấu hình đường dẫn ---
-// Đảm bảo đường dẫn configs luôn đúng
-const CONFIG_DIR = path.join(process.cwd(), "configs");
-if (!fs.existsSync(CONFIG_DIR)) fs.mkdirSync(CONFIG_DIR);
+ipcMain.handle("get-zip-password", async () => {
+  try {
+    const password = getZipPassword();
+    return { success: true, password };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
 
-const CREDENTIALS_PATH = path.join(CONFIG_DIR, "client_secret.json");
+ipcMain.handle("save-zip-password", async (event, newPassword) => {
+  try {
+    saveZipPassword(newPassword);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+const CREDENTIALS_PATH = getConfigFile("client_secret.json");
 const TOKEN_PATH = path.join(app.getPath("userData"), "token.json");
 const SCOPES = [
   "https://www.googleapis.com/auth/drive.file",
@@ -54,9 +75,9 @@ const SCOPES = [
   "https://www.googleapis.com/auth/userinfo.profile",
 ];
 
-const HISTORY_BACKUP_PATH = path.join(CONFIG_DIR, "history_backup.json");
-const HISTORY_UPLOAD_PATH = path.join(CONFIG_DIR, "history_upload.json");
-const INFO_PATH = path.join(CONFIG_DIR, "info.json");
+const HISTORY_BACKUP_PATH = getConfigFile("history_backup.json");
+const HISTORY_UPLOAD_PATH = getConfigFile("history_upload.json");
+const INFO_PATH = getConfigFile("info.json");
 
 // Hàm phụ trợ lưu history
 // main.js - Sửa lại hàm saveHistory một chút cho Linh
@@ -82,7 +103,8 @@ const saveHistory = (filePath, data) => {
       id: Date.now(),
       timestamp: new Date().toLocaleString("vi-VN"),
     });
-    fs.writeFileSync(filePath, JSON.stringify(history.slice(0, 100), null, 2));
+    const writePath = getWritableConfigFile(path.basename(filePath));
+    fs.writeFileSync(writePath, JSON.stringify(history.slice(0, 100), null, 2));
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message };
@@ -239,24 +261,23 @@ ipcMain.handle("clear-all-history", async (event, type) => {
 
 // main.js
 
-// Thêm đường dẫn tới file config mới
-const DRIVE_ACCOUNTS_PATH = path.join(CONFIG_DIR, "drive_accounts.json");
+const DRIVE_ACCOUNTS_PATH = getConfigFile("drive_accounts.json");
 
 // Handler để đọc danh sách tài khoản
 ipcMain.handle("get-drive-accounts", async () => {
   try {
-    if (!fs.existsSync(DRIVE_ACCOUNTS_PATH)) {
-      // Tạo file mặc định nếu chưa tồn tại
-      const defaultData = [
-        { email: "linhnguyen05211@gmail.com", label: "Drive Cá Nhân" },
-      ];
+    const readPath = getConfigFile("drive_accounts.json");
+    if (!fs.existsSync(readPath)) {
+      // Tạo file mặc định rỗng nếu chưa tồn tại
+      const defaultData = [];
+      const writePath = getWritableConfigFile("drive_accounts.json");
       fs.writeFileSync(
-        DRIVE_ACCOUNTS_PATH,
+        writePath,
         JSON.stringify(defaultData, null, 2),
       );
       return { success: true, accounts: defaultData };
     }
-    const data = fs.readFileSync(DRIVE_ACCOUNTS_PATH, "utf8");
+    const data = fs.readFileSync(readPath, "utf8");
     return { success: true, accounts: JSON.parse(data) };
   } catch (error) {
     return { success: false, error: error.message };
@@ -464,12 +485,12 @@ ipcMain.handle("check-database-info", async (event, dbConfig) => {
 // main.js - Thay thế handler update-drive-accounts của Linh bằng đoạn này
 ipcMain.handle("update-drive-accounts", async (event, updatedAccounts) => {
   try {
-    const DRIVE_ACCOUNTS_PATH = path.join(process.cwd(), "configs", "drive_accounts.json");
+    const readPath = getConfigFile("drive_accounts.json");
 
-    // 1. Đọc danh sách cũ từ đúng file drive_accounts.json của Linh
+    // 1. Đọc danh sách cũ
     let oldAccounts = [];
-    if (fs.existsSync(DRIVE_ACCOUNTS_PATH)) {
-      const content = fs.readFileSync(DRIVE_ACCOUNTS_PATH, "utf8");
+    if (fs.existsSync(readPath)) {
+      const content = fs.readFileSync(readPath, "utf8");
       oldAccounts = content ? JSON.parse(content) : [];
     }
 
@@ -490,7 +511,8 @@ ipcMain.handle("update-drive-accounts", async (event, updatedAccounts) => {
     });
 
     // 4. Ghi lại danh sách tài khoản mới vào file drive_accounts.json
-    fs.writeFileSync(DRIVE_ACCOUNTS_PATH, JSON.stringify(updatedAccounts, null, 2));
+    const writePath = getWritableConfigFile("drive_accounts.json");
+    fs.writeFileSync(writePath, JSON.stringify(updatedAccounts, null, 2));
     
     return { success: true };
   } catch (error) {
@@ -746,17 +768,16 @@ ipcMain.handle("delete-temp-files", async (event, files) => {
 ipcMain.handle("save-login-config", async (event, newConfig) => {
   console.log("Saving login config:", newConfig);
   
-  // SỬA: Sử dụng CONFIG_DIR (thường trỏ đến thư mục làm việc) thay vì getAppPath
-  // Vì getAppPath trong bản build sẽ trỏ vào file .asar (chỉ đọc), không ghi được
-  const filePath = path.join(CONFIG_DIR, 'info.json');
-  console.log("Đường dẫn lưu info.json:", filePath);
+  const readPath = getConfigFile("info.json");
+  const writePath = getWritableConfigFile("info.json");
+  console.log("Đường dẫn lưu info.json:", writePath);
 
   try {
     let data = { serverConfigs: [] };
 
     // 1. Đọc file cũ nếu tồn tại
-    if (fs.existsSync(filePath)) {
-      const fileContent = fs.readFileSync(filePath, "utf-8");
+    if (fs.existsSync(readPath)) {
+      const fileContent = fs.readFileSync(readPath, "utf-8");
       // Kiểm tra nếu file có nội dung thì mới parse
       data = fileContent ? JSON.parse(fileContent) : { serverConfigs: [] };
     }
@@ -775,7 +796,7 @@ ipcMain.handle("save-login-config", async (event, newConfig) => {
     }
 
     // 3. Ghi lại vào file với định dạng đẹp (indent 2)
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
+    fs.writeFileSync(writePath, JSON.stringify(data, null, 2), "utf-8");
 
     return { success: true };
   } catch (error) {
@@ -784,29 +805,10 @@ ipcMain.handle("save-login-config", async (event, newConfig) => {
   }
 });
 
-// 2. Handler LẤY cấu hình: Giúp React lấy danh sách "danh bạ" server
-// ipcMain.handle("get-login-configs", async () => {
-//   const filePath = path.join(CONFIG_DIR, 'info.json');
-//   try {
-//     if (fs.existsSync(filePath)) {
-//       const content = fs.readFileSync(filePath, "utf-8");
-//       return content ? JSON.parse(content) : { serverConfigs: [] };
-//     }
-//     return { serverConfigs: [] };
-//   } catch (error) {
-//     console.error("Lỗi đọc info.json:", error);
-//     return { serverConfigs: [] };
-//   }
-// });
-
-
-
-// main.js
 // main.js - Sửa lại chính xác hàm này
 ipcMain.handle('get-login-configs', async () => {
   try {
-    // 1. Dùng trực tiếp CONFIG_DIR để đảm bảo đồng nhất với lệnh GHI
-    const filePath = path.join(CONFIG_DIR, 'info.json'); 
+    const filePath = getConfigFile("info.json");
     
     // 2. Kiểm tra nếu file không tồn tại thì trả về mảng rỗng ngay, không để lỗi crash
     if (!fs.existsSync(filePath)) {
@@ -816,7 +818,6 @@ ipcMain.handle('get-login-configs', async () => {
     const data = fs.readFileSync(filePath, 'utf8');
     const json = JSON.parse(data);
     
-    // 3. Log ra terminal của Electron để bạn kiểm tra xem Backend đã thấy gì
     console.log(">>> Backend đọc được từ info.json:", json.serverConfigs?.length || 0, "servers");
 
     return { success: true, serverConfigs: json.serverConfigs || [] }; 
@@ -1048,7 +1049,7 @@ async function executeAutoBackup(task) {
   }
 }
 
-const AUTO_CONFIG_PATH = path.join(CONFIG_DIR, "auto_backups.json");
+const AUTO_CONFIG_PATH = getConfigFile("auto_backups.json");
 let activeJobs = {}; // Lưu các job đang chạy để có thể hủy/cập nhật
 
 // --- HÀM HỖ TRỢ: Chuyển đổi từ UI sang Cron Expression ---
@@ -1074,32 +1075,29 @@ function getCronExpression(schedule) {
 // --- IPC HANDLE: Lưu và Kích hoạt ---
 ipcMain.handle("save-auto-backup", async (event, config) => {
   try {
-    // 1. Lưu vào file JSON để bảo toàn dữ liệu khi tắt app
+    const readPath = getConfigFile("auto_backups.json");
+    const writePath = getWritableConfigFile("auto_backups.json");
     let currentConfigs = [];
-    if (fs.existsSync(AUTO_CONFIG_PATH)) {
-      const content = fs.readFileSync(AUTO_CONFIG_PATH, "utf8");
-      // Nếu file có nội dung thì mới parse, không thì để mảng rỗng
+    if (fs.existsSync(readPath)) {
+      const content = fs.readFileSync(readPath, "utf8");
       if (content.trim()) {
         currentConfigs = JSON.parse(content);
       }
     }
 
-    // Gán ID để quản lý (nếu cùng server+type thì có thể ghi đè hoặc thêm mới)
     const newConfig = { ...config, id: Date.now() };
     currentConfigs.push(newConfig);
-    fs.writeFileSync(AUTO_CONFIG_PATH, JSON.stringify(currentConfigs, null, 2));
+    fs.writeFileSync(writePath, JSON.stringify(currentConfigs, null, 2));
 
-    // 2. Thiết lập Cron Job thực tế
     const expression = getCronExpression(config.schedule);
 
     const job = cron.schedule(expression, () => {
       console.log(
         `[Cron] Bắt đầu chạy backup tự động cho: ${config.server.server}`,
       );
-      executeAutoBackup(newConfig); // Gọi hàm Worker bạn đã viết
+      executeAutoBackup(newConfig);
     });
 
-    // Lưu vào bộ nhớ để quản lý
     activeJobs[newConfig.id] = job;
 
     console.log(`[Cron] Đã lập lịch thành công: ${expression}`);
@@ -1115,23 +1113,19 @@ ipcMain.handle("stop-auto-backup", async (event, taskId) => {
   try {
     console.log(`[Cron] Yêu cầu dừng Task ID: ${taskId}`);
     console.log(`[Cron] Active Jobs hiện tại:`, activeJobs);
-    // 1. Kiểm tra xem Job có tồn tại trong bộ nhớ không
     if (activeJobs[taskId]) {
-      activeJobs[taskId].stop(); // Lệnh dừng node-cron
-      delete activeJobs[taskId]; // Xóa khỏi bộ nhớ quản lý
+      activeJobs[taskId].stop();
+      delete activeJobs[taskId];
       console.log(`[Cron] Đã dừng thành công Task: ${taskId}`);
     }
 
-    // 2. Cập nhật lại file JSON (Chuyển trạng thái hoặc xóa)
-    if (fs.existsSync(AUTO_CONFIG_PATH)) {
-      let configs = JSON.parse(fs.readFileSync(AUTO_CONFIG_PATH, "utf8"));
-      // Cách 1: Xóa hẳn task khỏi danh sách
+    const readPath = getConfigFile("auto_backups.json");
+    const writePath = getWritableConfigFile("auto_backups.json");
+
+    if (fs.existsSync(readPath)) {
+      let configs = JSON.parse(fs.readFileSync(readPath, "utf8"));
       configs = configs.filter((task) => task.id !== taskId);
-
-      // Hoặc Cách 2: Thêm thuộc tính enabled: false nếu bạn muốn giữ lại cấu hình
-      // configs = configs.map(task => task.id === taskId ? { ...task, enabled: false } : task);
-
-      fs.writeFileSync(AUTO_CONFIG_PATH, JSON.stringify(configs, null, 2));
+      fs.writeFileSync(writePath, JSON.stringify(configs, null, 2));
     }
 
     return { success: true };
@@ -1144,10 +1138,10 @@ ipcMain.handle("stop-auto-backup", async (event, taskId) => {
 // --- HÀM KHỞI TẠO: Chạy khi App vừa mở (app.whenReady) ---
 
 function initAutoBackups() {
-  if (fs.existsSync(AUTO_CONFIG_PATH)) {
+  const readPath = getConfigFile("auto_backups.json");
+  if (fs.existsSync(readPath)) {
     try {
-      const content = fs.readFileSync(AUTO_CONFIG_PATH, "utf8");
-      // Kiểm tra nếu file trống thì bỏ qua
+      const content = fs.readFileSync(readPath, "utf8");
       if (!content.trim()) return;
 
       const configs = JSON.parse(content);
@@ -1168,8 +1162,9 @@ function initAutoBackups() {
 // 1. Handler lấy danh sách cấu hình để hiển thị lên giao diện
 ipcMain.handle("get-auto-configs", async () => {
   try {
-    if (fs.existsSync(AUTO_CONFIG_PATH)) {
-      const data = fs.readFileSync(AUTO_CONFIG_PATH, "utf8");
+    const readPath = getConfigFile("auto_backups.json");
+    if (fs.existsSync(readPath)) {
+      const data = fs.readFileSync(readPath, "utf8");
       return { success: true, configs: JSON.parse(data) };
     }
     return { success: true, configs: [] };

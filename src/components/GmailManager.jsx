@@ -110,7 +110,12 @@ export const GmailManager = ({ showMsg }) => {
           '&::-webkit-scrollbar-thumb': { backgroundColor: '#ccc', borderRadius: '10px' }
         }}
       >
-        <List dense sx={{ p: 0 }}>
+        {accounts.length === 0 ? (
+          <Typography variant="body2" sx={{ color: '#94a3b8', fontStyle: 'italic', py: 2, textAlign: 'center' }}>
+            Chưa có tài khoản Gmail nào được liên kết. Vui lòng bấm "Đăng nhập Google" ở trên để thêm.
+          </Typography>
+        ) : (
+          <List dense sx={{ p: 0 }}>
           {accounts.map((acc, index) => (
             <ListItem
               key={index}
@@ -174,6 +179,7 @@ export const GmailManager = ({ showMsg }) => {
             </ListItem>
           ))}
         </List>
+        )}
       </Paper>
     </Box>
   );

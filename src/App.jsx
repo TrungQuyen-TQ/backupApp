@@ -42,6 +42,7 @@ import { ServerManager } from "./components/ServerManager";
 import LoginLayout from "./pages/Login/loginPage";
 import ConfirmStopModal from "./components/ConfirmStopModal"; // Đảm bảo đúng đường dẫn
 import Sidebar from "./components/Sidebar"; // Import Sidebar mới
+import { ZipPasswordModal } from "./components/ZipPasswordModal";
 
 
 
@@ -79,15 +80,15 @@ function App() {
   console.log(">>> [App] State selectedServer hiện tại:", selectedServer);
 
   const [formData, setFormData] = useState({
-    server: "45.124.84.145",
-    sshPort: "26266",
-    user: "root",
-    password: '"04+Shl6|$#^"1@#qe06',
+    server: "",
+    sshPort: "22",
+    user: "",
+    password: "",
     localPath: "C:\\db_backup",
     dbType: "sqlserver",
     port: "1433",
-    dbUser: "sa", // Username riêng cho SQL
-    dbPassword: '"04+Shl6|$#^"06', // Password riêng cho SQL
+    dbUser: "",
+    dbPassword: "",
   });
   const [isLoading, setIsLoading] = useState(false);
   const [connectionLogs, setConnectionLogs] = useState([]);
@@ -126,6 +127,7 @@ function App() {
   const [showDriveSelectModal, setShowDriveSelectModal] = useState(false);
 
   const [showConfirmStopModal, setShowConfirmStopModal] = useState(false);
+  const [showZipModal, setShowZipModal] = useState(false);
 
   const handleStopCurrentBackup = () => {
     setShowConfirmStopModal(true); // Chỉ mở Modal
@@ -179,12 +181,6 @@ function App() {
       if (unsubBackup) unsubBackup();
     };
   }, []);
-
-
-
-
-
-
   const onScanAndConnect = async (serverConfig) => {
     setIsLoading(true);
     try {
@@ -590,6 +586,7 @@ function App() {
         <Sidebar
           activeTab={activeTab}
           setActiveTab={setActiveTab}
+          onOpenZipModal={() => setShowZipModal(true)}
         />
           {/* MODAL 1: MULTIPLE SELECT */}
           <Modal
@@ -1386,6 +1383,11 @@ function App() {
         open={showConfirmStopModal}
         onClose={() => setShowConfirmStopModal(false)}
         onConfirm={handleConfirmStop}
+      />
+      <ZipPasswordModal
+        open={showZipModal}
+        onClose={() => setShowZipModal(false)}
+        showMsg={showMsg}
       />
     </Box >
   );

@@ -3,13 +3,24 @@ const { FuseV1Options, FuseVersion } = require('@electron/fuses');
 
 module.exports = {
   packagerConfig: {
+    name: 'backup-tool',
     asar: true,
+    ignore: (path) => {
+      if (!path) return false;
+      if (path.startsWith('/.vite')) return false;
+      if (path.startsWith('/package.json')) return false;
+      if (path.startsWith('/node_modules')) return false;
+      if (path.startsWith('/configs')) return false;
+      return true;
+    },
   },
   rebuildConfig: {},
   makers: [
     {
       name: '@electron-forge/maker-squirrel',
-      config: {},
+      config: {
+        name: 'backup-tool',
+      },
     },
     {
       name: '@electron-forge/maker-zip',

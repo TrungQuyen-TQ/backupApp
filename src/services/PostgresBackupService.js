@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { Client as SshClient } from 'ssh2';
+import { getZipPassword } from '../utils/configHelper.js';
 // Note: Always include the .js extension in Vite/ESM imports
 /**
  * Hàm nội bộ thực thi các lệnh qua SSH (Logic lõi)
@@ -80,16 +81,7 @@ async function executeSshBackup(sshConfig, backupConfig) {
  */
 export async function handlePostgresBackup(formData) {
   // 1. Đọc mật khẩu Zip từ file JSON
-  const passwordPath = path.join(process.cwd(), "configs", "passwordzip.json");
-  let backupPassword = "DefaultPassword123";
-  try {
-    if (fs.existsSync(passwordPath)) {
-      const config = JSON.parse(fs.readFileSync(passwordPath, 'utf8'));
-      backupPassword = config.password;
-    }
-  } catch (error) {
-    console.warn("Không đọc được file mật khẩu, dùng mặc định.");
-  }
+  const backupPassword = getZipPassword();
 
   // 2. Kiểm tra và tạo thư mục localPath (Sử dụng mkdirSync với recursive)
   const localDir = formData.localPath;

@@ -292,7 +292,6 @@ export const FormAuto = ({
                   }
                   SelectProps={{ native: true }}
                 >
-                  <option value="minute">Phút (Để Test)</option>
                   <option value="hour">Giờ</option>
                   <option value="day">Ngày</option>
                 </TextField>

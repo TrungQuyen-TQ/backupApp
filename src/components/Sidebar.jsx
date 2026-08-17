@@ -15,6 +15,7 @@ import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import MailIcon from '@mui/icons-material/Mail';
 import HistoryIcon from '@mui/icons-material/History';
 import LogoutIcon from '@mui/icons-material/Logout';
+import KeyIcon from '@mui/icons-material/Key';
 // Sidebar.jsx - Sửa lại phần import icon
 import DnsIcon from '@mui/icons-material/Dns'; // Phải import riêng biệt như thế này
 import { keyframes } from '@mui/material';
@@ -33,7 +34,7 @@ const azureGlow = keyframes`
 
 
 
-const Sidebar = ({ activeTab, setActiveTab, onLogout }) => {
+const Sidebar = ({ activeTab, setActiveTab, onLogout, onOpenZipModal }) => {
 
 
   const [isCollapsed, setIsCollapsed] = React.useState(false);
@@ -230,6 +231,42 @@ const Sidebar = ({ activeTab, setActiveTab, onLogout }) => {
             </ListItemButton>
           ))}
         </List>
+
+        {/* NÚT CÀI ĐẶT MẬT KHẨU ZIP */}
+        {onOpenZipModal && (
+          <Box sx={{ px: 2, pt: 1, pb: 1 }}>
+            <Divider sx={{ bgcolor: 'rgba(255,255,255,0.1)', mb: 1.5 }} />
+            <ListItemButton
+              onClick={onOpenZipModal}
+              sx={{
+                borderRadius: '12px',
+                color: '#00d2ff',
+                py: 1.2,
+                justifyContent: isCollapsed ? 'center' : 'flex-start',
+                px: isCollapsed ? 1 : 2,
+                transition: 'all 0.3s ease',
+                '&:hover': {
+                  bgcolor: 'rgba(0, 210, 255, 0.12)',
+                  transform: isCollapsed ? 'none' : 'translateX(6px)',
+                  boxShadow: '0 0 12px rgba(0, 210, 255, 0.3)',
+                },
+              }}
+            >
+              <ListItemIcon sx={{ color: '#00d2ff', minWidth: isCollapsed ? 0 : 40, justifyContent: 'center' }}>
+                <KeyIcon />
+              </ListItemIcon>
+              {!isCollapsed && (
+                <ListItemText
+                  primary="Mật khẩu Zip"
+                  primaryTypographyProps={{
+                    fontSize: '0.9rem',
+                    fontWeight: 600,
+                  }}
+                />
+              )}
+            </ListItemButton>
+          </Box>
+        )}
 
         {/* NÚT LOGOUT RIÊNG BIỆT Ở DƯỚI CÙNG (Chỉ hiện khi có truyền onLogout) */}
         {onLogout && (

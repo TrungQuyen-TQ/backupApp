@@ -1,45 +1,22 @@
 import { defineConfig } from "vite";
 import { viteStaticCopy } from "vite-plugin-static-copy";
+import { readFileSync } from "fs";
+
+const pkg = JSON.parse(readFileSync("./package.json", "utf-8"));
+const dependencies = Object.keys(pkg.dependencies || {});
 
 export default defineConfig({
   build: {
     rollupOptions: {
-      // Các thư viện Node.js thuần hoặc thư viện native C++ bắt buộc phải để external
+      // Externalize all dependencies from package.json & built-ins so Node resolves them at runtime from app.asar/node_modules
       external: [
         "electron",
-        // Database Drivers
-        'pg', 'pg-native',
-        "mssql",
-        "mysql2",
-        "mysql2/promise",
-        "mongodb",
-        // SSH & FTP
-        "ssh2-sftp-client",
-        "ssh2", // Thư viện lõi của sftp-client
-        // Compression & Encryption
-        "archiver",
-        "archiver-zip-encryptable",
-        // Google APIs (nếu bạn dùng)
-        "googleapis",
-        "google-auth-library",
-        "@google-cloud/local-auth",
-        // Optional dependencies của MongoDB/G-Auth
-        "kerberos",
-        "snappy",
-        "aws4",
-        "saslprep",
-        // Node.js Built-in Modules (dùng prefix node: là tốt nhất)
-        "node:path",
-        "node:fs",
-        "node:os",
-        "node:child_process",
-        "node:stream",
-        "node:util",
-        "node:events",
-        "path", // Dự phòng cho các lib cũ không dùng prefix node:
-        "fs",
-        "os",
-        "child_process"
+        ...dependencies,
+        /^mysql2\/.*/,
+        /^pg\/.*/,
+        /^googleapis\/.*/,
+        /^ssh2\/.*/,
+        /^node:.*/
       ],
     },
     // Tắt minify để dễ debug khi gặp lỗi liên quan đến đường dẫn file trong Main Process
