@@ -174,7 +174,21 @@ export async function executeSshBackup(sshConfig, transferConfig, mainCommand, o
                 return resolve({ success: false, error: "Lỗi truyền tải SFTP: " + dlErr.message });
               }
 
-              // 4. Dọn dẹp server
+              // 4. Kiểm tra dung lượng file đã tải về máy local
+              try {
+                if (!fs.existsSync(transferConfig.localPath) || fs.statSync(transferConfig.localPath).size === 0) {
+                  ssh.end();
+                  return resolve({
+                    success: false,
+                    error: "Lỗi truyền tải SFTP: File tải về máy local có dung lượng 0 bytes! Vui lòng kiểm tra quyền truy cập thư mục tạm trên Server."
+                  });
+                }
+              } catch (statErr) {
+                ssh.end();
+                return resolve({ success: false, error: "Lỗi kiểm tra file sau khi tải: " + statErr.message });
+              }
+
+              // 5. Dọn dẹp server
               onProgress("Đang dọn dẹp file tạm trên Server...", 95);
               sftp.unlink(transferConfig.remoteZipFile, (unlinkErr) => {
                 if (unlinkErr) console.warn(">>> [SFTP] Không thể xóa file tạm:", unlinkErr.message);
@@ -225,7 +239,7 @@ export async function universalBackupHandler(formData, event, onSshReady) {
   if (dbType === "postgresql" || dbType === "postgres") {
     const remoteFile = `/tmp/${baseName}.sql`;
     // Sử dụng nháy đơn cho mật khẩu như logic bản cũ để an toàn nhất
-    mainCommand = `export PGPASSWORD='${formData.dbPassword}' && pg_dump -h localhost -U "${formData.dbUser}" -d "${dbName}" -f "${remoteFile}" && 7za a -mx1 -p${safeZipPass} -mhe=on "${transferConfig.remoteZipFile}" "${remoteFile}" && rm -f "${remoteFile}"`;
+    mainCommand = `export PGPASSWORD='${formData.dbPassword}' && pg_dump -h localhost -U "${formData.dbUser}" -d "${dbName}" -f "${remoteFile}" && 7za a -mx1 -p${safeZipPass} -mhe=on "${transferConfig.remoteZipFile}" "${remoteFile}" && chmod 644 "${transferConfig.remoteZipFile}" && rm -f "${remoteFile}"`;
     try {
       const pg = new PgClient({ host: formData.server, user: formData.dbUser, password: formData.dbPassword, database: dbName, port: formData.dbPort || 5432 });
       await pg.connect(); dbStats = await getPgStats(pg); await pg.end();
@@ -275,7 +289,7 @@ rm -f "${scriptFile}"
     const remoteDir = `/tmp/${baseName}_dir`;
     // Thoát dấu nháy đơn trong mật khẩu MongoDB
     const mongoPassSafe = `'${formData.dbPassword.replace(/'/g, "'\\''")}'`;
-    mainCommand = `mongodump --host localhost --username ${formData.dbUser} --password ${mongoPassSafe} --authenticationDatabase admin --db ${dbName} --out ${remoteDir} && 7za a -mx1 -p${safeZipPass} -mhe=on ${transferConfig.remoteZipFile} ${remoteDir} && rm -rf ${remoteDir}`;
+    mainCommand = `mongodump --host localhost --username ${formData.dbUser} --password ${mongoPassSafe} --authenticationDatabase admin --db ${dbName} --out ${remoteDir} && 7za a -mx1 -p${safeZipPass} -mhe=on "${transferConfig.remoteZipFile}" ${remoteDir} && chmod 644 "${transferConfig.remoteZipFile}" && rm -rf ${remoteDir}`;
     try {
       const mClient = new MongoClient(`mongodb://${formData.dbUser}:${encodeURIComponent(formData.dbPassword)}@localhost:27017/${dbName}?authSource=admin`);
       await mClient.connect(); dbStats = await getMongoStats(mClient, dbName); await mClient.close();
@@ -285,12 +299,11 @@ rm -f "${scriptFile}"
     const sqlPath = "/opt/mssql-tools18/bin/sqlcmd";
     const remoteBaseMssql = `/var/opt/mssql/data/${baseName}`;
     const remoteFile = `${remoteBaseMssql}.bak`;
-    transferConfig.remoteZipFile = `${remoteBaseMssql}.7z`;
 
-    // KHÔI PHỤC LOGIC BẢN CŨ: Dùng touch, chmod và nháy đơn
+    // Giữ remoteZipFile ở /tmp để SFTP đọc không bị dính quyền thư mục mssql
     const dbPassSafe = `'${formData.dbPassword.replace(/'/g, "'\\''")}'`;
 
-    mainCommand = `touch ${remoteFile} && chmod 777 ${remoteFile} && ${sqlPath} -S localhost -U "${formData.dbUser}" -P ${dbPassSafe} -C -Q "BACKUP DATABASE [${dbName}] TO DISK='${remoteFile}' WITH FORMAT, INIT" && [ -s ${remoteFile} ] && 7za a -mx1 -p${safeZipPass} -mhe=on ${transferConfig.remoteZipFile} ${remoteFile} && rm -f ${remoteFile}`;
+    mainCommand = `touch "${remoteFile}" && chmod 777 "${remoteFile}" && ${sqlPath} -S localhost -U "${formData.dbUser}" -P ${dbPassSafe} -C -Q "BACKUP DATABASE [${dbName}] TO DISK='${remoteFile}' WITH FORMAT, INIT" && [ -s "${remoteFile}" ] && 7za a -mx1 -p${safeZipPass} -mhe=on "${transferConfig.remoteZipFile}" "${remoteFile}" && chmod 644 "${transferConfig.remoteZipFile}" && rm -f "${remoteFile}"`;
 
     console.log("SQL Server Optimized Command:", mainCommand);
     try {

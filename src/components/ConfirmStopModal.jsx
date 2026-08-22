@@ -7,6 +7,8 @@ const ConfirmStopModal = ({ open, onClose, onConfirm }) => {
     <Modal
       open={open}
       onClose={onClose}
+      disableEnforceFocus
+      disableRestoreFocus
       closeAfterTransition
       slots={{ backdrop: Backdrop }}
       slotProps={{

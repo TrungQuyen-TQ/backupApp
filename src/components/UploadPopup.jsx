@@ -160,7 +160,6 @@ const UploadPanel = ({ onUpload, showMsg, formdata }) => {
       // Thêm một chút delay nhỏ (khoảng 500ms) để đảm bảo ổ cứng đã kịp cập nhật trạng thái xóa
       setTimeout(async () => {
         await loadFiles();
-        showMsg("Đã dọn dẹp danh sách file thành công", "success");
       }, 1000);
 
     } catch (error) {

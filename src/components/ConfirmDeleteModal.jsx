@@ -7,6 +7,8 @@ const ConfirmDeleteModal = ({ open, onClose, onConfirm, title, description, conf
     <Modal
       open={open}
       onClose={onClose}
+      disableEnforceFocus
+      disableRestoreFocus
       closeAfterTransition
       slots={{ backdrop: Backdrop }}
       slotProps={{

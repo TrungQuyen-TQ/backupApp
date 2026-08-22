@@ -23,9 +23,10 @@ import {
   getWritableConfigFile,
   getZipPassword,
   saveZipPassword,
+  readJsonFile,
 } from "./utils/configHelper.js";
 
-export { getConfigFile, getWritableConfigFile, getZipPassword, saveZipPassword };
+export { getConfigFile, getWritableConfigFile, getZipPassword, saveZipPassword, readJsonFile };
 
 // Thêm dòng này để vô hiệu hóa Menu toàn cục
 Menu.setApplicationMenu(null);
@@ -86,11 +87,7 @@ const saveHistory = (filePath, data) => {
     // Chỉ lưu nếu data có giá trị hợp lệ
     if (!data) return { success: false };
 
-    let history = [];
-    if (fs.existsSync(filePath)) {
-      const content = fs.readFileSync(filePath, "utf8");
-      history = content ? JSON.parse(content) : [];
-    }
+    let history = readJsonFile(filePath, []) || [];
 
     // Đảm bảo stats luôn là một object để không bị lỗi undefined ở UI
     const secureData = {
@@ -186,7 +183,7 @@ ipcMain.handle("authorize-gmail", async (event) => {
       // Trả về kết quả cho React cập nhật UI
       return { success: true, email: email };
     }
-    
+
     return { success: false, error: "Xác thực không hoàn tất." };
   } catch (error) {
     console.error("Lỗi authorize-gmail chi tiết:", error);
@@ -218,11 +215,7 @@ ipcMain.handle("get-history", (event, type) => {
   try {
     const filePath =
       type === "backup" ? HISTORY_BACKUP_PATH : HISTORY_UPLOAD_PATH;
-    if (fs.existsSync(filePath)) {
-      const data = fs.readFileSync(filePath, "utf8");
-      return JSON.parse(data);
-    }
-    return [];
+    return readJsonFile(filePath, []);
   } catch (e) {
     return [];
   }
@@ -236,7 +229,7 @@ ipcMain.handle("delete-history-item", async (event, { type, id }) => {
     const filePath =
       type === "backup" ? HISTORY_BACKUP_PATH : HISTORY_UPLOAD_PATH;
     if (fs.existsSync(filePath)) {
-      let history = JSON.parse(fs.readFileSync(filePath, "utf8"));
+      let history = readJsonFile(filePath, []);
       history = history.filter((item) => item.id !== id);
       fs.writeFileSync(filePath, JSON.stringify(history, null, 2));
       return { success: true };
@@ -277,8 +270,8 @@ ipcMain.handle("get-drive-accounts", async () => {
       );
       return { success: true, accounts: defaultData };
     }
-    const data = fs.readFileSync(readPath, "utf8");
-    return { success: true, accounts: JSON.parse(data) };
+    const accounts = readJsonFile(readPath, []);
+    return { success: true, accounts: accounts || [] };
   } catch (error) {
     return { success: false, error: error.message };
   }
@@ -302,11 +295,11 @@ async function getAuthenticatedClient(email) {
 
   // 1. Kiểm tra nếu đã có Token lưu trong máy rồi thì dùng luôn
   if (fs.existsSync(SPECIFIC_TOKEN_PATH)) {
-    const token = JSON.parse(fs.readFileSync(SPECIFIC_TOKEN_PATH, "utf8"));
-    const credentialsContent = fs.readFileSync(CREDENTIALS_PATH, "utf8");
+    const token = readJsonFile(SPECIFIC_TOKEN_PATH);
+    const parsedCredentials = readJsonFile(CREDENTIALS_PATH);
     const keys =
-      JSON.parse(credentialsContent).installed ||
-      JSON.parse(credentialsContent).web;
+      parsedCredentials?.installed ||
+      parsedCredentials?.web;
 
     const auth = new google.auth.OAuth2(
       keys.client_id,
@@ -333,7 +326,7 @@ async function getAuthenticatedClient(email) {
   if (auth.credentials) {
     fs.writeFileSync(SPECIFIC_TOKEN_PATH, JSON.stringify(auth.credentials));
   }
-  
+
   return auth;
 }
 
@@ -374,22 +367,35 @@ async function getDatabaseStats(pool) {
 // ==========================================================
 // 3. HÀM GỬI EMAIL THÔNG BÁO
 // ==========================================================
-async function sendEmailNotifications(auth, fileName, stats) {
-  if (!fs.existsSync(DRIVE_ACCOUNTS_PATH)) return;
-  const accountsData = JSON.parse(fs.readFileSync(DRIVE_ACCOUNTS_PATH, "utf8"));
+async function sendEmailNotifications(auth, fileName, stats, folderName) {
+  console.log(`[Email] Khởi chạy gửi thông báo email cho tệp: ${fileName}`);
+  if (!fs.existsSync(DRIVE_ACCOUNTS_PATH)) {
+    console.log(`[Email Warning] Không tìm thấy tệp danh sách tài khoản tại: ${DRIVE_ACCOUNTS_PATH}`);
+    return;
+  }
+  const accountsData = readJsonFile(DRIVE_ACCOUNTS_PATH, []);
+  if (!accountsData) {
+    console.log(`[Email Warning] Dữ liệu tài khoản nhận email trống.`);
+    return;
+  }
   // Nếu là array (cấu trúc mới) thì lấy danh sách email, nếu là object cũ thì xử lý tương ứng
-  const emails = Array.isArray(accountsData) 
-    ? accountsData.map(acc => acc.email) 
+  const emails = Array.isArray(accountsData)
+    ? accountsData.map(acc => acc.email)
     : (accountsData.accounts ? accountsData.accounts.map(acc => acc.email) : []);
+
+  console.log(`[Email] Tìm thấy ${emails.length} địa chỉ email để gửi:`, emails);
 
   const gmail = google.gmail({ version: "v1", auth });
 
-  const tableRowsHtml = Object.entries(stats.rowCounts)
+  const rowCountsObj = stats?.rowCounts || {};
+
+  const tableRowsHtml = Object.entries(rowCountsObj)
     .map(([table, count]) => `<li><b>${table}</b>: ${count} dòng</li>`)
     .join("");
 
   for (const email of emails) {
     try {
+      console.log(`[Email] Đang biên soạn và gửi email tới: ${email}...`);
       const subject = `🔔 [Backup Report] ${fileName}`;
       const utf8Subject = `=?utf-8?B?${Buffer.from(subject).toString("base64")}?=`;
       const messageParts = [
@@ -398,9 +404,10 @@ async function sendEmailNotifications(auth, fileName, stats) {
         `Subject: ${utf8Subject}`,
         "",
         `<h3>Báo cáo Backup chi tiết</h3>`,
-        `<p>Hệ thống vừa backup thành công file: <b>${fileName}</b></p>`,
+        `<p>Hệ thống vừa backup và tải lên thành công file: <b>${fileName}</b></p>`,
         `<hr>`,
-        `<p><b>Hệ thống:</b> ${stats.shortVersion}</p>`,
+        `<strong>Trạng thái:</strong> Đã tải lên Drive thành công.`,
+        `<p><b>Thư mục lưu trữ trên Drive:</b> ${folderName || "SQL_Backups"}</p>`,
         `<p><b>Thống kê dữ liệu:</b></p>`,
         `<ul>${tableRowsHtml}</ul>`,
         `<br><p>Xác thực: <b>VERIFYONLY OK</b></p>`,
@@ -415,10 +422,12 @@ async function sendEmailNotifications(auth, fileName, stats) {
         userId: "me",
         requestBody: { raw: encodedMessage },
       });
+      console.log(`[Email] ✅ Gửi email thành công tới: ${email}`);
     } catch (err) {
-      console.error(`Lỗi gửi mail: ${err.message}`);
+      console.error(`[Email Error] ❌ Thất bại khi gửi mail tới ${email}: ${err.message}`);
     }
   }
+  console.log("[Email] Đã hoàn thành tiến trình gửi thông báo email.");
 }
 
 // ==========================================================
@@ -488,11 +497,7 @@ ipcMain.handle("update-drive-accounts", async (event, updatedAccounts) => {
     const readPath = getConfigFile("drive_accounts.json");
 
     // 1. Đọc danh sách cũ
-    let oldAccounts = [];
-    if (fs.existsSync(readPath)) {
-      const content = fs.readFileSync(readPath, "utf8");
-      oldAccounts = content ? JSON.parse(content) : [];
-    }
+    let oldAccounts = readJsonFile(readPath, []) || [];
 
     // 2. Tìm những email vừa bị xóa khỏi giao diện
     const deletedAccounts = oldAccounts.filter(
@@ -503,7 +508,7 @@ ipcMain.handle("update-drive-accounts", async (event, updatedAccounts) => {
     deletedAccounts.forEach(acc => {
       const safeEmail = acc.email.replace(/[^a-z0-9]/gi, "_");
       const tokenPath = path.join(app.getPath("userData"), `token_${safeEmail}.json`);
-      
+
       if (fs.existsSync(tokenPath)) {
         fs.unlinkSync(tokenPath); // Xóa file thật trên ổ cứng
         console.log(`🗑️ Đã xóa file token vật lý: ${acc.email}`);
@@ -513,7 +518,7 @@ ipcMain.handle("update-drive-accounts", async (event, updatedAccounts) => {
     // 4. Ghi lại danh sách tài khoản mới vào file drive_accounts.json
     const writePath = getWritableConfigFile("drive_accounts.json");
     fs.writeFileSync(writePath, JSON.stringify(updatedAccounts, null, 2));
-    
+
     return { success: true };
   } catch (error) {
     console.error("Lỗi khi cập nhật và xóa token:", error);
@@ -572,7 +577,7 @@ ipcMain.handle("create-sql-backup", async (event, dbConfig) => {
 
   // Gọi handler và truyền vào callback để lấy object chứa hàm stop()
   return await handler(dbConfig, event, (controller) => {
-    currentBackupController = controller; 
+    currentBackupController = controller;
   });
 });
 
@@ -646,21 +651,21 @@ ipcMain.handle("upload-to-drive", async (event, { files, targetEmail, folderName
       list.data.files.length > 0
         ? list.data.files[0].id
         : (
-            await drive.files.create({
-              requestBody: {
-                name: targetFolderName,
-                mimeType: "application/vnd.google-apps.folder",
-              },
-              fields: "id",
-            })
-          ).data.id;
+          await drive.files.create({
+            requestBody: {
+              name: targetFolderName,
+              mimeType: "application/vnd.google-apps.folder",
+            },
+            fields: "id",
+          })
+        ).data.id;
 
     // 3. Tính toán tổng dung lượng toàn bộ Batch để hiển thị % chính xác
     const totalBatchSize = files.reduce(
       (acc, f) => acc + fs.statSync(f.path).size,
       0,
     );
-    
+
     let totalUploadedBeforeCurrentFile = 0;
     const uploadResults = [];
 
@@ -722,9 +727,24 @@ ipcMain.handle("upload-to-drive", async (event, { files, targetEmail, folderName
           success: true,
           driveId: res.data.id,
         });
+
+        // 5. Gửi email thông báo qua Gmail
+        try {
+          const backupHistory = readJsonFile(HISTORY_BACKUP_PATH, []);
+          const foundRecord = backupHistory.find(
+            (h) => h.fileName === fileObj.name || path.basename(h.fileName) === path.basename(fileObj.name)
+          );
+          const stats = foundRecord?.stats || { rowCounts: {}, shortVersion: "N/A" };
+
+          console.log(`📧 Đang gửi email thông báo cho file: ${fileObj.name}...`);
+          await sendEmailNotifications(auth, fileObj.name, stats, targetFolderName);
+          console.log(`📧 Đã gửi email thông báo thành công cho file: ${fileObj.name}`);
+        } catch (emailError) {
+          console.error(`❌ Lỗi gửi email thông báo cho file ${fileObj.name}:`, emailError.message);
+        }
       } catch (uploadError) {
         console.error(`❌ Lỗi tại file ${fileObj.name}:`, uploadError.message);
-        
+
         // Nếu lỗi 1 file, vẫn cộng size vào để thanh Progress không bị "nhảy ngược"
         totalUploadedBeforeCurrentFile += fs.statSync(fileObj.path).size;
 
@@ -733,7 +753,7 @@ ipcMain.handle("upload-to-drive", async (event, { files, targetEmail, folderName
           status: "Lỗi",
           error: uploadError.message,
         });
-        
+
         uploadResults.push({ name: fileObj.name, success: false });
       }
     }
@@ -767,31 +787,36 @@ ipcMain.handle("delete-temp-files", async (event, files) => {
 // 1. Handler LƯU cấu hình: Sửa đường dẫn để đảm bảo ghi được file
 ipcMain.handle("save-login-config", async (event, newConfig) => {
   console.log("Saving login config:", newConfig);
-  
+
   const readPath = getConfigFile("info.json");
   const writePath = getWritableConfigFile("info.json");
   console.log("Đường dẫn lưu info.json:", writePath);
 
   try {
-    let data = { serverConfigs: [] };
-
     // 1. Đọc file cũ nếu tồn tại
-    if (fs.existsSync(readPath)) {
-      const fileContent = fs.readFileSync(readPath, "utf-8");
-      // Kiểm tra nếu file có nội dung thì mới parse
-      data = fileContent ? JSON.parse(fileContent) : { serverConfigs: [] };
+    let data = readJsonFile(readPath, { serverConfigs: [] }) || { serverConfigs: [] };
+
+    if (!newConfig.id) {
+      newConfig.id = Date.now().toString() + "_" + Math.random().toString(36).substring(2, 6);
     }
 
-    // 2. Kiểm tra trùng lặp dựa trên nhãn (label)
-    const existingIndex = data.serverConfigs.findIndex(
-      (item) => item.label.toLowerCase() === newConfig.label.toLowerCase()
+    if (!newConfig.label) {
+      const dbName = newConfig.dbType || "DB";
+      newConfig.label = `${dbName.toUpperCase()} (${newConfig.server})`;
+    }
+
+    // 2. Kiểm tra trùng lặp dựa trên id hoặc nhãn (label)
+    const existingIndex = (data.serverConfigs || []).findIndex(
+      (item) =>
+        (item.id && newConfig.id && item.id === newConfig.id) ||
+        (item.label && newConfig.label && item.label.toLowerCase() === newConfig.label.toLowerCase()) ||
+        (item.server && newConfig.server && item.server === newConfig.server && (item.dbType || "") === (newConfig.dbType || ""))
     );
 
     if (existingIndex > -1) {
-      // Nếu đã có thì cập nhật thông tin mới (đè lên)
-      data.serverConfigs[existingIndex] = newConfig;
+      data.serverConfigs[existingIndex] = { ...data.serverConfigs[existingIndex], ...newConfig };
     } else {
-      // Nếu chưa có thì thêm mới vào danh sách
+      if (!data.serverConfigs) data.serverConfigs = [];
       data.serverConfigs.push(newConfig);
     }
 
@@ -805,22 +830,52 @@ ipcMain.handle("save-login-config", async (event, newConfig) => {
   }
 });
 
+// Handler XÓA cấu hình server
+ipcMain.handle("delete-login-config", async (event, targetConfig) => {
+  console.log("Deleting login config:", targetConfig);
+  const readPath = getConfigFile("info.json");
+  const writePath = getWritableConfigFile("info.json");
+
+  try {
+    if (!fs.existsSync(readPath)) {
+      return { success: true };
+    }
+
+    let data = readJsonFile(readPath, { serverConfigs: [] }) || { serverConfigs: [] };
+
+    data.serverConfigs = (data.serverConfigs || []).filter((item) => {
+      if (targetConfig.id && item.id) {
+        return item.id !== targetConfig.id;
+      }
+      if (targetConfig.label && item.label) {
+        return item.label.toLowerCase() !== targetConfig.label.toLowerCase();
+      }
+      return item.server !== targetConfig.server;
+    });
+
+    fs.writeFileSync(writePath, JSON.stringify(data, null, 2), "utf-8");
+    return { success: true };
+  } catch (error) {
+    console.error("Lỗi xóa info.json:", error);
+    return { success: false, error: error.message };
+  }
+});
+
 // main.js - Sửa lại chính xác hàm này
 ipcMain.handle('get-login-configs', async () => {
   try {
     const filePath = getConfigFile("info.json");
-    
+
     // 2. Kiểm tra nếu file không tồn tại thì trả về mảng rỗng ngay, không để lỗi crash
     if (!fs.existsSync(filePath)) {
       return { success: true, serverConfigs: [] };
     }
 
-    const data = fs.readFileSync(filePath, 'utf8');
-    const json = JSON.parse(data);
-    
-    console.log(">>> Backend đọc được từ info.json:", json.serverConfigs?.length || 0, "servers");
+    const json = readJsonFile(filePath, { serverConfigs: [] }) || { serverConfigs: [] };
 
-    return { success: true, serverConfigs: json.serverConfigs || [] }; 
+    console.log(">>> [Backend] Loaded from info.json:", json.serverConfigs?.length || 0, "servers");
+
+    return { success: true, serverConfigs: json.serverConfigs || [] };
   } catch (error) {
     console.error("Lỗi get-login-configs:", error.message);
     return { success: false, error: error.message };
@@ -954,14 +1009,14 @@ async function uploadFilesInternal(files, targetEmail) {
       list.data.files.length > 0
         ? list.data.files[0].id
         : (
-            await drive.files.create({
-              requestBody: {
-                name: "SQL_Backups",
-                mimeType: "application/vnd.google-apps.folder",
-              },
-              fields: "id",
-            })
-          ).data.id;
+          await drive.files.create({
+            requestBody: {
+              name: "SQL_Backups",
+              mimeType: "application/vnd.google-apps.folder",
+            },
+            fields: "id",
+          })
+        ).data.id;
 
     // 2. Upload từng file
     for (const fileObj of files) {
@@ -1023,6 +1078,17 @@ async function executeAutoBackup(task) {
             );
 
             await uploadFilesInternal([fileToUpload], emailStr);
+
+            // Gửi email thông báo sau khi upload tự động thành công
+            try {
+              const auth = await getAuthenticatedClient(emailStr);
+              const stats = backupResult.stats || { rowCounts: {}, shortVersion: "N/A" };
+              console.log(`[Auto] Đang gửi email thông báo cho: ${emailStr}...`);
+              await sendEmailNotifications(auth, fileToUpload.name, stats, "SQL_Backups");
+              console.log(`[Auto] Đã gửi email thông báo thành công cho: ${emailStr}`);
+            } catch (mailErr) {
+              console.error(`[Auto Error] Gửi email thất bại cho ${emailStr}:`, mailErr.message);
+            }
           } catch (uploadErr) {
             // Sửa log lỗi để thấy rõ email nào bị lỗi
             const errEmail =
@@ -1039,6 +1105,8 @@ async function executeAutoBackup(task) {
           fs.unlinkSync(backupResult.filePath);
           console.log(`[Auto] Đã dọn dẹp file tạm: ${fileToUpload.name}`);
         }
+      } else {
+        console.error(`[Auto Error] Thất bại khi backup DB ${dbName}:`, backupResult.error);
       }
     } catch (err) {
       console.error(
@@ -1077,13 +1145,7 @@ ipcMain.handle("save-auto-backup", async (event, config) => {
   try {
     const readPath = getConfigFile("auto_backups.json");
     const writePath = getWritableConfigFile("auto_backups.json");
-    let currentConfigs = [];
-    if (fs.existsSync(readPath)) {
-      const content = fs.readFileSync(readPath, "utf8");
-      if (content.trim()) {
-        currentConfigs = JSON.parse(content);
-      }
-    }
+    let currentConfigs = readJsonFile(readPath, []) || [];
 
     const newConfig = { ...config, id: Date.now() };
     currentConfigs.push(newConfig);
@@ -1123,7 +1185,7 @@ ipcMain.handle("stop-auto-backup", async (event, taskId) => {
     const writePath = getWritableConfigFile("auto_backups.json");
 
     if (fs.existsSync(readPath)) {
-      let configs = JSON.parse(fs.readFileSync(readPath, "utf8"));
+      let configs = readJsonFile(readPath, []) || [];
       configs = configs.filter((task) => task.id !== taskId);
       fs.writeFileSync(writePath, JSON.stringify(configs, null, 2));
     }
@@ -1141,10 +1203,9 @@ function initAutoBackups() {
   const readPath = getConfigFile("auto_backups.json");
   if (fs.existsSync(readPath)) {
     try {
-      const content = fs.readFileSync(readPath, "utf8");
-      if (!content.trim()) return;
+      const configs = readJsonFile(readPath, []);
+      if (!configs || !Array.isArray(configs)) return;
 
-      const configs = JSON.parse(content);
       configs.forEach((config) => {
         const expression = getCronExpression(config.schedule);
         const job = cron.schedule(expression, () => {
@@ -1164,8 +1225,8 @@ ipcMain.handle("get-auto-configs", async () => {
   try {
     const readPath = getConfigFile("auto_backups.json");
     if (fs.existsSync(readPath)) {
-      const data = fs.readFileSync(readPath, "utf8");
-      return { success: true, configs: JSON.parse(data) };
+      const configs = readJsonFile(readPath, []);
+      return { success: true, configs: configs || [] };
     }
     return { success: true, configs: [] };
   } catch (error) {

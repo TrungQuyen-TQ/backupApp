@@ -383,10 +383,10 @@ function App() {
         });
         setShowBackupModal(true);
       } else {
-        alert(`❌ Lỗi: ${result.error}`);
+        showMsg(`❌ Lỗi: ${result.error}`, "error");
       }
     } catch (err) {
-      alert(`⚠️ Lỗi hệ thống: ${err.message}`);
+      showMsg(`⚠️ Lỗi hệ thống: ${err.message}`, "error");
     }
   };
 
@@ -503,14 +503,14 @@ function App() {
           break;
       }
     } catch (error) {
-      alert("Lỗi kết nối server: " + error.message);
+      showMsg("Lỗi kết nối server: " + error.message, "error");
     } finally {
       setIsFetchingDbs(false);
     }
   };
 
   const handleBackupMultipleDbs = async () => {
-    if (selectedDbs.length === 0) return alert("Vui lòng chọn ít nhất 1 database!");
+    if (selectedDbs.length === 0) return showMsg("Vui lòng chọn ít nhất 1 database!", "warning");
     setShowInputDbModal(false);
 
     // --- THÊM BIẾN ĐẾM THÀNH CÔNG ---
@@ -588,339 +588,198 @@ function App() {
           setActiveTab={setActiveTab}
           onOpenZipModal={() => setShowZipModal(true)}
         />
-          {/* MODAL 1: MULTIPLE SELECT */}
-          <Modal
-            open={showInputDbModal}
-            onClose={() => setShowInputDbModal(false)}
+        {/* MODAL 1: MULTIPLE SELECT */}
+        <Modal
+          open={showInputDbModal}
+          onClose={() => setShowInputDbModal(false)}
+        >
+          <Box
+            sx={{
+              position: "absolute",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              width: 450,
+              bgcolor: "background.paper",
+              borderRadius: "12px",
+              p: 4,
+            }}
           >
-            <Box
-              sx={{
-                position: "absolute",
-                top: "50%",
-                left: "50%",
-                transform: "translate(-50%, -50%)",
-                width: 450,
-                bgcolor: "background.paper",
-                borderRadius: "12px",
-                p: 4,
-              }}
-            >
-              <TextField
-                fullWidth
-                label="Thư mục lưu trữ (Local Path)"
-                variant="outlined"
-                size="small"
-                value={formData.localPath}
-                onChange={(e) =>
-                  setFormData({ ...formData, localPath: e.target.value })
-                }
-                placeholder="Chọn thư mục lưu file backup..."
-                sx={{ mt: 2, mb: 1 }}
-                InputProps={{
-                  endAdornment: (
-                    <IconButton
-                      onClick={handleBrowseFolder}
-                      edge="end"
-                      color="primary"
-                    >
-                      <FolderOpenIcon />
-                    </IconButton>
-                  ),
-                }}
-                helperText="Bấm vào biểu tượng thư mục để chọn nơi lưu file"
-              />
-
-              {isFetchingDbs ? (
-                <Box
-                  sx={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    p: 3,
-                  }}
-                >
-                  <CircularProgress size={40} />
-                  <Typography sx={{ mt: 2 }}>Đang quét server...</Typography>
-                </Box>
-              ) : (
-                <FormControl sx={{ width: "100%", mt: 1 }}>
-                  <InputLabel>Chọn Database để Backup</InputLabel>
-                  <Select
-                    multiple
-                    value={selectedDbs}
-                    onChange={handleSelectChange}
-                    input={<OutlinedInput label="Danh sách Database" />}
-                    renderValue={(selected) => (
-                      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
-                        {selected.map((value) => (
-                          <Chip
-                            key={value}
-                            label={value}
-                            size="small"
-                            color="primary"
-                          />
-                        ))}
-                      </Box>
-                    )}
-                    MenuProps={MenuProps}
+            <TextField
+              fullWidth
+              label="Thư mục lưu trữ (Local Path)"
+              variant="outlined"
+              size="small"
+              value={formData.localPath}
+              onChange={(e) =>
+                setFormData({ ...formData, localPath: e.target.value })
+              }
+              placeholder="Chọn thư mục lưu file backup..."
+              sx={{ mt: 2, mb: 1 }}
+              InputProps={{
+                endAdornment: (
+                  <IconButton
+                    onClick={handleBrowseFolder}
+                    edge="end"
+                    color="primary"
                   >
-                    {(dbList || []).length === 0 ? (
-                      <MenuItem disabled>
-                        <em>Không có dữ liệu</em>
-                      </MenuItem>
-                    ) : (
-                      dbList.map((name) => (
-                        <MenuItem
-                          key={name}
-                          value={name}
-                          style={getStyles(name, selectedDbs, theme)}
-                        >
-                          {name}
-                        </MenuItem>
-                      ))
-                    )}
-                  </Select>
-                </FormControl>
-              )}
-              <Box sx={{ mt: 4, display: "flex", gap: 1 }}>
-                <Button
-                  fullWidth
-                  onClick={() => setShowInputDbModal(false)}
-                  sx={{
-                    px: 3,
-                    borderRadius: "12px",
-                    fontWeight: "800",
-                    textTransform: "uppercase",
-                    letterSpacing: "1px",
-                    color: "#fff",
-                    position: "relative",
-                    overflow: "hidden",
-                    transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
-
-                    // --- GRADIENT ĐỎ NEON CHUYỂN ĐỘNG ---
-                    backgroundSize: "200% 200%",
-                    backgroundImage: "linear-gradient(135deg, #f44336 0%, #ba000d 50%, #f44336 100%)",
-                    animation: "redFlow 3s ease infinite",
-
-                    "@keyframes redFlow": {
-                      "0%": { backgroundPosition: "0% 50%" },
-                      "50%": { backgroundPosition: "100% 50%" },
-                      "100%": { backgroundPosition: "0% 50%" },
-                    },
-
-                    boxShadow: "0 4px 15px rgba(211, 47, 47, 0.3)",
-
-                    "&:hover": {
-                      transform: "translateY(-2px)",
-                      filter: "brightness(1.15)",
-                      boxShadow: "0 8px 25px rgba(211, 47, 47, 0.5)",
-                      "&::after": {
-                        left: "100%",
-                      },
-                    },
-
-                    // Hiệu ứng ánh kim quét qua
-                    "&::after": {
-                      content: '""',
-                      position: "absolute",
-                      top: 0,
-                      left: "-100%",
-                      width: "100%",
-                      height: "100%",
-                      background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)",
-                      transition: "all 0.6s",
-                    },
-
-                    "&:active": { transform: "scale(0.95)" }
-                  }}
-                >
-                  HỦY
-                </Button>
-                <Button
-                  fullWidth
-                  variant="contained"
-                  disabled={selectedDbs.length === 0 || isFetchingDbs}
-                  onClick={handleBackupMultipleDbs}
-                  sx={{
-                    borderRadius: "12px",
-                    fontWeight: "800",
-                    textTransform: "uppercase",
-                    letterSpacing: "1px",
-                    color: "#fff",
-                    position: "relative",
-                    overflow: "hidden",
-                    transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
-
-                    // --- GRADIENT XANH NEON CHUYỂN ĐỘNG ---
-                    backgroundSize: "200% 200%",
-                    backgroundImage: (selectedDbs.length === 0 || isFetchingDbs)
-                      ? "linear-gradient(135deg, #94a3b8 0%, #64748b 100%)" // Màu xám khi disabled
-                      : "linear-gradient(135deg, #00d2ff 0%, #3a7bd5 50%, #00d2ff 100%)",
-
-                    animation: !(selectedDbs.length === 0 || isFetchingDbs) ? "blueFlow 3s ease infinite" : "none",
-
-                    "@keyframes blueFlow": {
-                      "0%": { backgroundPosition: "0% 50%" },
-                      "50%": { backgroundPosition: "100% 50%" },
-                      "100%": { backgroundPosition: "0% 50%" },
-                    },
-
-                    boxShadow: (selectedDbs.length === 0 || isFetchingDbs)
-                      ? "none"
-                      : "0 4px 15px rgba(0, 210, 255, 0.3)",
-
-                    "&:hover": {
-                      transform: !(selectedDbs.length === 0 || isFetchingDbs) ? "translateY(-2px)" : "none",
-                      filter: "brightness(1.1)",
-                      boxShadow: !(selectedDbs.length === 0 || isFetchingDbs) ? "0 8px 25px rgba(0, 210, 255, 0.5)" : "none",
-                      "&::after": {
-                        left: "100%",
-                      },
-                    },
-
-                    // Hiệu ứng ánh kim quét qua
-                    "&::after": {
-                      content: '""',
-                      position: "absolute",
-                      top: 0,
-                      left: "-100%",
-                      width: "100%",
-                      height: "100%",
-                      background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)",
-                      transition: "all 0.6s",
-                    },
-
-                    "&.Mui-disabled": {
-                      background: "#e2e8f0 !important",
-                      color: "#94a3b8 !important",
-                    },
-
-                    "&:active": { transform: "scale(0.95)" }
-                  }}
-                >
-                  BẮT ĐẦU ({selectedDbs.length}) DB
-                </Button>
-              </Box>
-            </Box>
-          </Modal>
-
-          {/* MODAL 2: KẾT QUẢ */}
-          <Modal
-            open={showBackupModal}
-            onClose={() => setShowBackupModal(false)}
-          >
-            <Box
-              sx={{
-                position: "absolute",
-                top: "50%",
-                left: "50%",
-                transform: "translate(-50%, -50%)",
-                width: 450,
-                bgcolor: "background.paper",
-                borderRadius: "12px",
-                p: 4,
+                    <FolderOpenIcon />
+                  </IconButton>
+                ),
               }}
-            >
-              <Typography
-                variant="h6"
-                sx={{ mb: 2, color: "#1976d2", fontWeight: 700 }}
-              >
-                ✅ Hoàn tất BackUp
-              </Typography>
-              <Divider sx={{ mb: 2 }} />
-              <Typography variant="body2" component="div">
-                <b>File:</b> {backupStats?.fileName}
-              </Typography>
+
+            />
+
+            {isFetchingDbs ? (
               <Box
                 sx={{
-                  bgcolor: "#f5f5f5",
-                  p: 2,
-                  borderRadius: "8px",
-                  maxHeight: 200,
-                  overflowY: "auto",
-                  mt: 2,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  p: 3,
                 }}
               >
-                {/* Hiển thị tên Database ở đây */}
-                {backupStats?.dbName && (
-                  <Typography
-                    variant="subtitle2"
-                    component="div" // <--- THÊM DÒNG NÀY
-                    sx={{
-                      fontWeight: 800,
-                      mb: 1,
-                      color: "#1976d2",
-                      borderBottom: "2px solid #1976d2",
-                    }}
-                  >
-                    Database: {backupStats.dbName}
-                  </Typography>
-                )}
-
-                {backupStats &&
-                  Object.entries(backupStats.stats.rowCounts).map(
-                    ([table, count]) => (
-                      <Box
-                        key={table}
-                        sx={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          borderBottom: "1px solid #ddd",
-                          py: 0.5,
-                        }}
-                      >
-                        <Typography variant="caption">{table}</Typography>
-                        <Typography
-                          variant="caption"
-                          sx={{ fontWeight: 700, color: "#2e7d32" }}
-                        >
-                          {count} dòng
-                        </Typography>
-                      </Box>
-                    ),
-                  )}
+                <CircularProgress size={40} />
+                <Typography sx={{ mt: 2 }}>Đang quét server...</Typography>
               </Box>
-
+            ) : (
+              <FormControl sx={{ width: "100%", mt: 1 }}>
+                <InputLabel>Chọn Database Backup</InputLabel>
+                <Select
+                  multiple
+                  value={selectedDbs}
+                  onChange={handleSelectChange}
+                  input={<OutlinedInput label="Chọn Database Backup" />}
+                  renderValue={(selected) => (
+                    <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                      {selected.map((value) => (
+                        <Chip
+                          key={value}
+                          label={value}
+                          size="small"
+                          color="primary"
+                        />
+                      ))}
+                    </Box>
+                  )}
+                  MenuProps={MenuProps}
+                >
+                  {(dbList || []).length === 0 ? (
+                    <MenuItem disabled>
+                      <em>Không có dữ liệu</em>
+                    </MenuItem>
+                  ) : (
+                    dbList.map((name) => (
+                      <MenuItem
+                        key={name}
+                        value={name}
+                        style={getStyles(name, selectedDbs, theme)}
+                      >
+                        {name}
+                      </MenuItem>
+                    ))
+                  )}
+                </Select>
+              </FormControl>
+            )}
+            <Box sx={{ mt: 4, display: "flex", gap: 1 }}>
               <Button
-                variant="contained"
                 fullWidth
-                onClick={() => setShowBackupModal(false)}
+                onClick={() => setShowInputDbModal(false)}
                 sx={{
-                  mt: 3,
+                  px: 3,
                   borderRadius: "12px",
-                  textTransform: "none",
-                  fontWeight: 800,
-                  fontSize: "0.9rem",
-                  py: 1.2, // Tăng độ dày cho nút trông cân đối hơn
+                  fontWeight: "800",
+                  textTransform: "uppercase",
+                  letterSpacing: "1px",
                   color: "#fff",
                   position: "relative",
                   overflow: "hidden",
                   transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
-                  boxShadow: "0 4px 15px rgba(0, 212, 255, 0.3)",
 
-                  // --- GRADIENT XANH NEON DI CHUYỂN ---
+                  // --- GRADIENT ĐỎ NEON CHUYỂN ĐỘNG ---
                   backgroundSize: "200% 200%",
-                  backgroundImage: "linear-gradient(135deg, #00f2fe 0%, #4facfe 50%, #00f2fe 100%)",
-                  animation: "neonGradient 3s ease infinite",
+                  backgroundImage: "linear-gradient(135deg, #f44336 0%, #ba000d 50%, #f44336 100%)",
+                  animation: "redFlow 3s ease infinite",
 
-                  "@keyframes neonGradient": {
+                  "@keyframes redFlow": {
                     "0%": { backgroundPosition: "0% 50%" },
                     "50%": { backgroundPosition: "100% 50%" },
                     "100%": { backgroundPosition: "0% 50%" },
                   },
 
-                  // --- HIỆU ỨNG KHI HOVER ---
+                  boxShadow: "0 4px 15px rgba(211, 47, 47, 0.3)",
+
                   "&:hover": {
-                    transform: "translateY(-3px)",
-                    filter: "brightness(1.1)",
-                    boxShadow: "0 8px 25px rgba(0, 242, 254, 0.5)",
-                    "&::before": {
+                    transform: "translateY(-2px)",
+                    filter: "brightness(1.15)",
+                    boxShadow: "0 8px 25px rgba(211, 47, 47, 0.5)",
+                    "&::after": {
                       left: "100%",
                     },
                   },
 
-                  // --- VỆT SÁNG QUÉT QUA (SHINE EFFECT) ---
-                  "&::before": {
+                  // Hiệu ứng ánh kim quét qua
+                  "&::after": {
+                    content: '""',
+                    position: "absolute",
+                    top: 0,
+                    left: "-100%",
+                    width: "100%",
+                    height: "100%",
+                    background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)",
+                    transition: "all 0.6s",
+                  },
+
+                  "&:active": { transform: "scale(0.95)" }
+                }}
+              >
+                HỦY
+              </Button>
+              <Button
+                fullWidth
+                variant="contained"
+                disabled={selectedDbs.length === 0 || isFetchingDbs}
+                onClick={handleBackupMultipleDbs}
+                sx={{
+                  borderRadius: "12px",
+                  fontWeight: "800",
+                  textTransform: "uppercase",
+                  letterSpacing: "1px",
+                  color: "#fff",
+                  position: "relative",
+                  overflow: "hidden",
+                  transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
+
+                  // --- GRADIENT XANH NEON CHUYỂN ĐỘNG ---
+                  backgroundSize: "200% 200%",
+                  backgroundImage: (selectedDbs.length === 0 || isFetchingDbs)
+                    ? "linear-gradient(135deg, #94a3b8 0%, #64748b 100%)" // Màu xám khi disabled
+                    : "linear-gradient(135deg, #00d2ff 0%, #3a7bd5 50%, #00d2ff 100%)",
+
+                  animation: !(selectedDbs.length === 0 || isFetchingDbs) ? "blueFlow 3s ease infinite" : "none",
+
+                  "@keyframes blueFlow": {
+                    "0%": { backgroundPosition: "0% 50%" },
+                    "50%": { backgroundPosition: "100% 50%" },
+                    "100%": { backgroundPosition: "0% 50%" },
+                  },
+
+                  boxShadow: (selectedDbs.length === 0 || isFetchingDbs)
+                    ? "none"
+                    : "0 4px 15px rgba(0, 210, 255, 0.3)",
+
+                  "&:hover": {
+                    transform: !(selectedDbs.length === 0 || isFetchingDbs) ? "translateY(-2px)" : "none",
+                    filter: "brightness(1.1)",
+                    boxShadow: !(selectedDbs.length === 0 || isFetchingDbs) ? "0 8px 25px rgba(0, 210, 255, 0.5)" : "none",
+                    "&::after": {
+                      left: "100%",
+                    },
+                  },
+
+                  // Hiệu ứng ánh kim quét qua
+                  "&::after": {
                     content: '""',
                     position: "absolute",
                     top: 0,
@@ -931,115 +790,253 @@ function App() {
                     transition: "all 0.6s",
                   },
 
-                  // Hiệu ứng nhấn nút (Active)
-                  "&:active": {
-                    transform: "scale(0.95)",
-                  }
+                  "&.Mui-disabled": {
+                    background: "#e2e8f0 !important",
+                    color: "#94a3b8 !important",
+                  },
+
+                  "&:active": { transform: "scale(0.95)" }
                 }}
               >
-                Đóng
+                BẮT ĐẦU ({selectedDbs.length}) DB
               </Button>
             </Box>
-          </Modal>
+          </Box>
+        </Modal>
 
-          {/* 2. NỘI DUNG CHÍNH BÊN PHẢI */}
-          <Box component="main"
+        {/* MODAL 2: KẾT QUẢ */}
+        <Modal
+          open={showBackupModal}
+          onClose={() => setShowBackupModal(false)}
+        >
+          <Box
             sx={{
-              flex: 1,           // Thay flexGrow bằng flex: 1
-              minWidth: 0,       // QUAN TRỌNG: Ngăn nội dung đẩy bung layout
-              p: 3,
-              height: '100vh',   // Cố định chiều cao
-              overflowY: 'scroll', // ÉP HIỆN THANH CUỘN LUÔN LUÔN để không bị giật 15px
-              bgcolor: '#eaeff1'
+              position: "absolute",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              width: 450,
+              bgcolor: "background.paper",
+              borderRadius: "12px",
+              p: 4,
             }}
           >
+            <Typography
+              variant="h6"
+              sx={{ mb: 2, color: "#1976d2", fontWeight: 700 }}
+            >
+              ✅ Hoàn tất BackUp
+            </Typography>
+            <Divider sx={{ mb: 2 }} />
+            <Typography variant="body2" component="div">
+              <b>File:</b> {backupStats?.fileName}
+            </Typography>
+            <Box
+              sx={{
+                bgcolor: "#f5f5f5",
+                p: 2,
+                borderRadius: "8px",
+                maxHeight: 200,
+                overflowY: "auto",
+                mt: 2,
+              }}
+            >
+              {/* Hiển thị tên Database ở đây */}
+              {backupStats?.dbName && (
+                <Typography
+                  variant="subtitle2"
+                  component="div" // <--- THÊM DÒNG NÀY
+                  sx={{
+                    fontWeight: 800,
+                    mb: 1,
+                    color: "#1976d2",
+                    borderBottom: "2px solid #1976d2",
+                  }}
+                >
+                  Database: {backupStats.dbName}
+                </Typography>
+              )}
 
-            {console.log(">>> [App] Tab đang hiển thị là:", activeTab)}
-            <Container maxWidth="lg" sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-
-
-              {/* --- KHỐI TRÊN: CẤU HÌNH VÀ CHỨC NĂNG --- */}
-              <Paper elevation={2} sx={{ borderRadius: 2, overflow: "hidden", mb: 1 }}>
-
-                {/* Box nội dung không dùng scroll, cho phép dãn tự nhiên */}
-                {/* Thay thế đoạn này trong App.jsx từ dòng 758 đến 813 */}
-                <Box sx={{ p: 0 }}>
-                  {/* Index 0: Chủ động */}
-                  {activeTab === 0 && (
-                    <>
-                      {console.log(">>> [App] Đang nạp ConnectionForm...")}
-                      <ConnectionForm
-                        formData={formData}
-                        setFormData={setFormData}
-                        onConnectSuccess={handleTestConnection}
-                        showMsg={showMsg}
-                        onLoginSuccess={handleLoginSuccess}
-                        initialData={selectedServer}
-                      />
-                    </>
-
-                  )}
-
-                  {/* Index 1: Tự động */}
-                  {activeTab === 1 && (
-                    <Box sx={{ p: 2 }}>
-                      <FormAuto
-                        showMsg={showMsg}
-                        connectionLogs={connectionLogs}
-                        setActiveTab={setActiveTab} // THÊM DÒNG NÀY ĐỂ TRÁNH LỖI
-                        onFetchDatabases={handleOpenBackupConfig}
-                        dbList={dbList}
-                        isFetching={isFetchingDbs}
-                      />
-                    </Box>
-                  )}
-
-                  {/* Index 2: Quản lý Server */}
-                  {/* {activeTab === 2 && (
-                    <ServerManager
-                      showMsg={showMsg}
-                      onConnect={(serverData) => {
-                        setSelectedServer(serverData);
-                        setActiveTab(0);
+              {backupStats &&
+                Object.entries(backupStats.stats.rowCounts).map(
+                  ([table, count]) => (
+                    <Box
+                      key={table}
+                      sx={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        borderBottom: "1px solid #ddd",
+                        py: 0.5,
                       }}
-                    />
-                  )} */}
-                  {/* App.jsx */}
-                  {activeTab === 2 && (
-                    <ServerManager
-                      showMsg={showMsg}
-                      // PHẢI TRUYỀN HÀM MỚI VÀO ĐÂY
-                      onScanAndConnect={onScanAndConnect}
-                    />
-                  )}
-
-
-
-                  {/* Index 3: Đẩy lên Cloud */}
-                  {activeTab === 3 && (
-                    <Box>
-                      <UploadPopup onUpload={handleUploadFiles} showMsg={showMsg} formdata={formData} />
-                      <CloudBackup
-                        handleOpenUploadPopup={handleOpenUploadPopup}
-                        isUploading={isUploading}
-                        uploadProgress={driveProgress}
-                        uploadSpeed={uploadSpeed}
-                        isLoading={isLoading}
-                        showMsg={showMsg}
-                      />
+                    >
+                      <Typography variant="caption">{table}</Typography>
+                      <Typography
+                        variant="caption"
+                        sx={{ fontWeight: 700, color: "#2e7d32" }}
+                      >
+                        {count} dòng
+                      </Typography>
                     </Box>
-                  )}
+                  ),
+                )}
+            </Box>
 
-                  {/* Index 4: Quản lý Gmail */}
-                  {activeTab === 4 && <GmailManager showMsg={showMsg} />}
+            <Button
+              variant="contained"
+              fullWidth
+              onClick={() => setShowBackupModal(false)}
+              sx={{
+                mt: 3,
+                borderRadius: "12px",
+                textTransform: "none",
+                fontWeight: 800,
+                fontSize: "0.9rem",
+                py: 1.2, // Tăng độ dày cho nút trông cân đối hơn
+                color: "#fff",
+                position: "relative",
+                overflow: "hidden",
+                transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
+                boxShadow: "0 4px 15px rgba(0, 212, 255, 0.3)",
 
-                  {/* Index 5: History */}
-                  {activeTab === 5 && <HistoryManager />}
-                </Box>
-              </Paper>
+                // --- GRADIENT XANH NEON DI CHUYỂN ---
+                backgroundSize: "200% 200%",
+                backgroundImage: "linear-gradient(135deg, #00f2fe 0%, #4facfe 50%, #00f2fe 100%)",
+                animation: "neonGradient 3s ease infinite",
 
-              {/* --- KHỐI DƯỚI: LỊCH SỬ KẾT NỐI (Chuyển từ cột phải sang) --- */}
+                "@keyframes neonGradient": {
+                  "0%": { backgroundPosition: "0% 50%" },
+                  "50%": { backgroundPosition: "100% 50%" },
+                  "100%": { backgroundPosition: "0% 50%" },
+                },
 
+                // --- HIỆU ỨNG KHI HOVER ---
+                "&:hover": {
+                  transform: "translateY(-3px)",
+                  filter: "brightness(1.1)",
+                  boxShadow: "0 8px 25px rgba(0, 242, 254, 0.5)",
+                  "&::before": {
+                    left: "100%",
+                  },
+                },
+
+                // --- VỆT SÁNG QUÉT QUA (SHINE EFFECT) ---
+                "&::before": {
+                  content: '""',
+                  position: "absolute",
+                  top: 0,
+                  left: "-100%",
+                  width: "100%",
+                  height: "100%",
+                  background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)",
+                  transition: "all 0.6s",
+                },
+
+                // Hiệu ứng nhấn nút (Active)
+                "&:active": {
+                  transform: "scale(0.95)",
+                }
+              }}
+            >
+              Đóng
+            </Button>
+          </Box>
+        </Modal>
+
+        {/* 2. NỘI DUNG CHÍNH BÊN PHẢI */}
+        <Box component="main"
+          sx={{
+            flex: 1,           // Thay flexGrow bằng flex: 1
+            minWidth: 0,       // QUAN TRỌNG: Ngăn nội dung đẩy bung layout
+            p: 3,
+            height: '100vh',   // Cố định chiều cao
+            overflowY: 'scroll', // ÉP HIỆN THANH CUỘN LUÔN LUÔN để không bị giật 15px
+            bgcolor: '#eaeff1'
+          }}
+        >
+
+          {console.log(">>> [App] Tab đang hiển thị là:", activeTab)}
+          <Container maxWidth="lg" sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+
+
+            {/* --- KHỐI TRÊN: CẤU HÌNH VÀ CHỨC NĂNG --- */}
+            <Paper elevation={2} sx={{ borderRadius: 2, overflow: "hidden", mb: 1 }}>
+
+              {/* Box nội dung không dùng scroll, cho phép dãn tự nhiên */}
+              {/* Thay thế đoạn này trong App.jsx từ dòng 758 đến 813 */}
+              <Box sx={{ p: 0 }}>
+                {/* Index 0: Chủ động */}
+                {activeTab === 0 && (
+                  <>
+                    {console.log(">>> [App] Đang nạp ConnectionForm...")}
+                    <ConnectionForm
+                      formData={formData}
+                      setFormData={setFormData}
+                      onConnectSuccess={handleTestConnection}
+                      showMsg={showMsg}
+                      onLoginSuccess={handleLoginSuccess}
+                      initialData={selectedServer}
+                    />
+                  </>
+
+                )}
+
+                {/* Index 1: Tự động */}
+                {activeTab === 1 && (
+                  <Box sx={{ p: 2 }}>
+                    <FormAuto
+                      showMsg={showMsg}
+                      connectionLogs={connectionLogs}
+                      setActiveTab={setActiveTab} // THÊM DÒNG NÀY ĐỂ TRÁNH LỖI
+                      onFetchDatabases={handleOpenBackupConfig}
+                      dbList={dbList}
+                      isFetching={isFetchingDbs}
+                    />
+                  </Box>
+                )}
+
+                {/* Index 2: Quản lý Server */}
+                {activeTab === 2 && (
+                  <ServerManager
+                    showMsg={showMsg}
+                    onScanAndConnect={(serverData) => {
+                      console.log(">>> [App] Kết nối từ ServerManager:", serverData);
+                      setFormData((prev) => ({
+                        ...prev,
+                        ...serverData,
+                      }));
+                      setSelectedServer(serverData);
+                      setActiveTab(0);
+                    }}
+                  />
+                )}
+
+
+
+                {/* Index 3: Đẩy lên Cloud */}
+                {activeTab === 3 && (
+                  <Box>
+                    <UploadPopup onUpload={handleUploadFiles} showMsg={showMsg} formdata={formData} />
+                    <CloudBackup
+                      handleOpenUploadPopup={handleOpenUploadPopup}
+                      isUploading={isUploading}
+                      uploadProgress={driveProgress}
+                      uploadSpeed={uploadSpeed}
+                      isLoading={isLoading}
+                      showMsg={showMsg}
+                    />
+                  </Box>
+                )}
+
+                {/* Index 4: Quản lý Gmail */}
+                {activeTab === 4 && <GmailManager showMsg={showMsg} />}
+
+                {/* Index 5: History */}
+                {activeTab === 5 && <HistoryManager />}
+              </Box>
+            </Paper>
+
+            {/* --- KHỐI DƯỚI: LỊCH SỬ KẾT NỐI (Chỉ hiển thị ở tab Chủ động - activeTab === 0) --- */}
+            {activeTab === 0 && (
               <Paper elevation={2} sx={{ borderRadius: 2, p: 2, minHeight: "200px", bgcolor: "#fff" }}>
                 <Typography variant="h6" sx={{ mb: 1, fontWeight: "bold", px: 1 }}>
                   Lịch sử kết nối & Trạng thái Backup
@@ -1120,7 +1117,7 @@ function App() {
                                 }}
                               >
                                 {/* Kiểm tra nếu uploadSpeed chứa chữ "Đang chuẩn bị" thì mới bóc tách, 
-        nếu không thì hiển thị tên DB trực tiếp từ config của log */}
+          nếu không thì hiển thị tên DB trực tiếp từ config của log */}
                                 ● Đang backup db: {
                                   uploadSpeed.includes("Đang chuẩn bị")
                                     ? uploadSpeed.split("...")[0].replace("Đang chuẩn bị: ", "")
@@ -1302,82 +1299,83 @@ function App() {
                   ))}
                 </List>
               </Paper>
+            )}
 
 
-            </Container>
+          </Container>
 
 
 
-          </Box>
-
-          {/* SNACKBAR THÔNG BÁO */}
-          <Snackbar
-            open={snackbar.open}
-            autoHideDuration={4000}
-            onClose={handleCloseSnackbar}
-            anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-          >
-            <Alert
-              onClose={handleCloseSnackbar}
-              severity={snackbar.severity}
-              variant="filled" // Sử dụng biến thể filled để màu sắc đậm đà hơn
-              sx={{
-                width: "100%",
-                borderRadius: "16px", // Bo góc lớn hiện đại
-                fontWeight: 600,
-                fontSize: "0.95rem",
-                alignItems: "center",
-
-                // Đổ bóng đa lớp (Soft UI Shadow)
-                boxShadow: "0 10px 30px rgba(0,0,0,0.15), 0 4px 8px rgba(0,0,0,0.1)",
-
-                // Tùy chỉnh màu sắc dựa trên severity (độ nghiêm trọng)
-                backgroundColor: (theme) => {
-                  if (snackbar.severity === "success") return "#10b981"; // Xanh Emerald
-                  if (snackbar.severity === "error") return "#ef4444";   // Đỏ Rose
-                  if (snackbar.severity === "warning") return "#f59e0b"; // Vàng Amber
-                  return "#3b82f6"; // Blue mặc định
-                },
-
-                // Hiệu ứng viền mảnh (Border) để trông sắc nét
-                border: "1px solid rgba(255, 255, 255, 0.2)",
-
-                // Tùy chỉnh Icon
-                "& .MuiAlert-icon": {
-                  fontSize: "24px",
-                  opacity: 0.9,
-                },
-
-                // Tùy chỉnh nội dung tin nhắn
-                "& .MuiAlert-message": {
-                  padding: "8px 0",
-                  letterSpacing: "0.3px",
-                },
-
-                // Hiệu ứng Hover nhẹ
-                transition: "transform 0.3s ease",
-                "&:hover": {
-                  transform: "translateY(-2px)",
-                },
-
-                // Animation khi xuất hiện (Slide & Fade)
-                animation: "slideInRight 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55)",
-                "@keyframes slideInRight": {
-                  "0%": {
-                    opacity: 0,
-                    transform: "translateX(100%)",
-                  },
-                  "100%": {
-                    opacity: 1,
-                    transform: "translateX(0)",
-                  },
-                },
-              }}
-            >
-              {snackbar.message}
-            </Alert>
-          </Snackbar>
         </Box>
+
+        {/* SNACKBAR THÔNG BÁO */}
+        <Snackbar
+          open={snackbar.open}
+          autoHideDuration={4000}
+          onClose={handleCloseSnackbar}
+          anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+        >
+          <Alert
+            onClose={handleCloseSnackbar}
+            severity={snackbar.severity}
+            variant="filled" // Sử dụng biến thể filled để màu sắc đậm đà hơn
+            sx={{
+              width: "100%",
+              borderRadius: "16px", // Bo góc lớn hiện đại
+              fontWeight: 600,
+              fontSize: "0.95rem",
+              alignItems: "center",
+
+              // Đổ bóng đa lớp (Soft UI Shadow)
+              boxShadow: "0 10px 30px rgba(0,0,0,0.15), 0 4px 8px rgba(0,0,0,0.1)",
+
+              // Tùy chỉnh màu sắc dựa trên severity (độ nghiêm trọng)
+              backgroundColor: (theme) => {
+                if (snackbar.severity === "success") return "#10b981"; // Xanh Emerald
+                if (snackbar.severity === "error") return "#ef4444";   // Đỏ Rose
+                if (snackbar.severity === "warning") return "#f59e0b"; // Vàng Amber
+                return "#3b82f6"; // Blue mặc định
+              },
+
+              // Hiệu ứng viền mảnh (Border) để trông sắc nét
+              border: "1px solid rgba(255, 255, 255, 0.2)",
+
+              // Tùy chỉnh Icon
+              "& .MuiAlert-icon": {
+                fontSize: "24px",
+                opacity: 0.9,
+              },
+
+              // Tùy chỉnh nội dung tin nhắn
+              "& .MuiAlert-message": {
+                padding: "8px 0",
+                letterSpacing: "0.3px",
+              },
+
+              // Hiệu ứng Hover nhẹ
+              transition: "transform 0.3s ease",
+              "&:hover": {
+                transform: "translateY(-2px)",
+              },
+
+              // Animation khi xuất hiện (Slide & Fade)
+              animation: "slideInRight 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55)",
+              "@keyframes slideInRight": {
+                "0%": {
+                  opacity: 0,
+                  transform: "translateX(100%)",
+                },
+                "100%": {
+                  opacity: 1,
+                  transform: "translateX(0)",
+                },
+              },
+            }}
+          >
+            {snackbar.message}
+          </Alert>
+        </Snackbar>
+      </Box>
       {/* Chèn ở bất kỳ đâu trong phần return (thường là gần Snackbar) */}
       <ConfirmStopModal
         open={showConfirmStopModal}

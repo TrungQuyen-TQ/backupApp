@@ -29,6 +29,7 @@ export const FormAuto = ({
   onFetchDatabases,
   dbList,
   isFetching,
+  showMsg,
 }) => {
   const handleServerChange = (e) => {
     const serverId = e.target.value;
@@ -102,18 +103,18 @@ export const FormAuto = ({
   });
 
   const handleStopBackup = async (taskId) => {
-  if (window.confirm("Bạn có chắc chắn muốn dừng và xóa lịch backup này?")) {
-    console.log("Yêu cầu dừng backup với ID:", taskId);
-    const result = await window.electronAPI.stopAutoBackup(taskId);
-    if (result.success) {
-      // Cập nhật lại state của UI để task biến mất ngay lập tức
-      setActiveTasks((prev) => prev.filter(t => t.id !== taskId));
-      console.log("Đã dừng backup thành công");
-    } else {
-      alert("Lỗi: " + result.error);
+    if (window.confirm("Bạn có chắc chắn muốn dừng và xóa lịch backup này?")) {
+      console.log("Yêu cầu dừng backup với ID:", taskId);
+      const result = await window.electronAPI.stopAutoBackup(taskId);
+      if (result.success) {
+        // Cập nhật lại state của UI để task biến mất ngay lập tức
+        setActiveTasks((prev) => prev.filter(t => t.id !== taskId));
+        if (showMsg) showMsg("Đã dừng backup thành công!", "info");
+      } else {
+        if (showMsg) showMsg("Lỗi: " + result.error, "error");
+      }
     }
-  }
-};
+  };
 
   const handleSaveConfig = async () => {
     const finalConfig = {
@@ -124,17 +125,19 @@ export const FormAuto = ({
     };
     const res = await window.electronAPI.saveAutoBackup(finalConfig);
     if (res.success) {
-      alert("Kích hoạt chu trình backup thành công!");
+      if (showMsg) showMsg("✅ Kích hoạt chu trình backup thành công!", "success");
       refreshActiveTasks(); // <--- Cập nhật lại danh sách hiển thị
       // Reset form nếu muốn
       setSelectedDBs([]);
+    } else {
+      if (showMsg) showMsg("❌ Lỗi kích hoạt: " + (res.error || "Không thể lưu cấu hình"), "error");
     }
   };
 
   const handleStopTask = async (taskId) => {
     const res = await window.electronAPI.stopAutoBackup(taskId);
     if (res.success) {
-      alert("Đã dừng và xóa lịch trình backup thành công!");
+      if (showMsg) showMsg("Đã dừng và xóa lịch trình backup thành công!", "info");
       // Cập nhật lại giao diện
       setActiveTasks((prev) => prev.filter((t) => t.id !== taskId));
     }
@@ -150,7 +153,7 @@ export const FormAuto = ({
       const res = await window.electronAPI.stopAllBackups();
       if (res.success) {
         setActiveTasks([]); // Xóa trắng danh sách trên giao diện
-        alert("Đã dừng tất cả chu trình!");
+        if (showMsg) showMsg("Đã dừng tất cả chu trình!", "warning");
       }
     }
   };
@@ -408,18 +411,18 @@ export const FormAuto = ({
                       📧 Emails:{" "}
                       {task.targetEmails && task.targetEmails.length > 0
                         ? task.targetEmails.map((item, index) => (
-                            <span
-                              key={index}
-                              style={{
-                                backgroundColor: "#f0f0f0",
-                                padding: "2px 8px",
-                                borderRadius: "4px",
-                                fontSize: "0.75rem",
-                              }}
-                            >
-                              {item.label}: <b>{item.email}</b>
-                            </span>
-                          ))
+                          <span
+                            key={index}
+                            style={{
+                              backgroundColor: "#f0f0f0",
+                              padding: "2px 8px",
+                              borderRadius: "4px",
+                              fontSize: "0.75rem",
+                            }}
+                          >
+                            {item.label}: <b>{item.email}</b>
+                          </span>
+                        ))
                         : "Chưa cấu hình"}
                     </Typography>
                   </Paper>

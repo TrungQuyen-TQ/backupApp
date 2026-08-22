@@ -5,7 +5,7 @@ export const BackupModal = ({ open, onClose, data }) => {
   if (!data) return null;
   
   return (
-    <Modal open={open} onClose={onClose}>
+    <Modal open={open} onClose={onClose} disableEnforceFocus disableRestoreFocus>
       <Box sx={{
         position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
         width: 450, bgcolor: "background.paper", borderRadius: 3, boxShadow: 24, p: 3

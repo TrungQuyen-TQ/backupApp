@@ -86,6 +86,8 @@ export function ZipPasswordModal({ open, onClose, showMsg }) {
       onClose={onClose}
       maxWidth="xs"
       fullWidth
+      disableEnforceFocus
+      disableRestoreFocus
       PaperProps={{
         sx: {
           borderRadius: "16px",

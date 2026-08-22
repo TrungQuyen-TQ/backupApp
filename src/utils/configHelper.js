@@ -38,18 +38,27 @@ export function getWritableConfigFile(filename) {
 }
 
 /**
+ * Đọc và parse JSON từ file, tự động loại bỏ UTF-8 BOM (\uFEFF) nếu có
+ */
+export function readJsonFile(filePath, defaultValue = null) {
+  try {
+    if (!fs.existsSync(filePath)) return defaultValue;
+    const content = fs.readFileSync(filePath, "utf8").replace(/^\uFEFF/, "").trim();
+    if (!content) return defaultValue;
+    return JSON.parse(content);
+  } catch (err) {
+    console.error(`Lỗi đọc JSON từ file ${filePath}:`, err.message);
+    return defaultValue;
+  }
+}
+
+/**
  * Lấy mật khẩu nén file zip/7z hiện tại
  */
 export function getZipPassword() {
   const pPath = getConfigFile("passwordzip.json");
-  if (fs.existsSync(pPath)) {
-    try {
-      const data = JSON.parse(fs.readFileSync(pPath, "utf8"));
-      if (data && data.password) return data.password;
-    } catch (e) {
-      console.warn("Lỗi đọc passwordzip.json:", e.message);
-    }
-  }
+  const data = readJsonFile(pPath);
+  if (data && data.password) return data.password;
   return "admin123";
 }
 
@@ -61,3 +70,4 @@ export function saveZipPassword(newPassword) {
   fs.writeFileSync(writePath, JSON.stringify({ password: newPassword }, null, 2), "utf8");
   return true;
 }
+

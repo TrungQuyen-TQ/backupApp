@@ -56,6 +56,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getDatabasesList: (config) =>
     ipcRenderer.invoke("get-databases-list", config),
   saveLoginConfig: (config) => ipcRenderer.invoke('save-login-config', config),
+  deleteLoginConfig: (config) => ipcRenderer.invoke('delete-login-config', config),
   getDriveAccounts: () => ipcRenderer.invoke("get-drive-accounts"),
   deleteTempFiles: (files) => ipcRenderer.invoke("delete-temp-files", files),
   // Thêm dòng này
